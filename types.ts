@@ -1,5 +1,3 @@
-import { Timestamp } from 'firebase/firestore';
-
 export interface Bookmark {
   id: string;
   title: string;
@@ -7,8 +5,8 @@ export interface Bookmark {
   category: string;
   notes?: string;
   favicon?: string;
-  createdAt?: Timestamp;
-  updatedAt?: Timestamp;
+  createdAt?: { seconds: number; nanoseconds: number };
+  updatedAt?: { seconds: number; nanoseconds: number };
   lastEditor?: string;
 }
 

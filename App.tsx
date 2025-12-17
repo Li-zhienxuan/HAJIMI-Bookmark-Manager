@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   signInWithCustomToken, 
   signInAnonymously, 
@@ -66,30 +66,50 @@ export default function App() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const showToast = (msg: string, type: 'success' | 'error' = 'success') => setToast({ msg, type });
+  
+  // Refs to track mounting status to prevent setting state on unmounted components
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
 
   // Auth Initialization
   useEffect(() => {
-    let mounted = true;
+    if (!isConfigured) {
+      setLoading(false);
+      return;
+    }
+
+    let unsubscribe = () => {};
 
     const initAuth = async () => {
-      if (!isConfigured) {
-        if(mounted) setLoading(false);
-        return;
-      }
-      
       try {
         console.log("HAJIMI: Initializing Firebase Auth...");
+        
+        // Listen to auth state changes FIRST
+        unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+          if (!isMounted.current) return;
+          setUser(currentUser);
+          // If we have a user, or if we determined we are not loading anymore
+          if (currentUser) {
+            setLoading(false);
+            setAuthSetupError(null);
+          }
+        });
+
         if (typeof window !== 'undefined' && window.__initial_auth_token) {
           await signInWithCustomToken(auth, window.__initial_auth_token);
         } else {
-          // This will throw 'auth/configuration-not-found' if Anonymous auth is not enabled in Console
+          // Attempt sign in. If this throws (e.g. config error), we catch it below.
           await signInAnonymously(auth);
         }
-        console.log("HAJIMI: Auth successful.");
+        console.log("HAJIMI: Auth successful or pending...");
       } catch (error: any) {
         console.error("Auth failed", error);
         
-        if (!mounted) return;
+        if (!isMounted.current) return;
 
         // Specific handling for common setup errors
         if (error?.code === 'auth/configuration-not-found' || error?.code === 'auth/operation-not-allowed') {
@@ -99,29 +119,19 @@ export default function App() {
         }
         
         if (error?.code === 'auth/api-key-not-valid') {
-           // handled by isConfigured mostly, but fallback
            setAuthSetupError("API Key is invalid.");
            setLoading(false);
            return;
         }
 
-        // For other errors, we might still want to show the app (offline mode?) but usually auth is required.
-        // We'll show a toast but allow the app to try and render (user will be null)
         showToast("Authentication failed: " + error.message, "error");
+        setLoading(false); 
       }
     };
 
     initAuth();
 
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (!mounted) return;
-      setUser(currentUser);
-      // Only turn off loading if we haven't hit a blocking error
-      setLoading((prev) => prev && false); 
-    });
-
     return () => {
-      mounted = false;
       unsubscribe();
     };
   }, []);
@@ -138,6 +148,7 @@ export default function App() {
     const q = query(collectionRef);
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!isMounted.current) return;
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bookmark));
       docs.sort((a, b) => {
           const tA = a.createdAt?.seconds || 0;
@@ -147,7 +158,6 @@ export default function App() {
       setBookmarks(docs);
     }, (error) => {
       console.error("Data error:", error);
-      // Ignore permission errors that happen during auth transitions
       if (error.code !== 'permission-denied') {
         showToast("无法加载数据，请检查网络", "error");
       }

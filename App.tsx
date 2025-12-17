@@ -185,7 +185,8 @@ export default function App() {
       let domain = 'unknown';
       try { domain = new URL(formData.url).hostname; } catch(err) {}
       
-      const favicon = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+      // Use DuckDuckGo favicon service instead of Google
+      const favicon = `https://icons.duckduckgo.com/ip3/${domain}.ico`;
       const payload: any = { ...formData, favicon, updatedAt: serverTimestamp() };
 
       if (storageMode === 'public') {
@@ -264,7 +265,7 @@ export default function App() {
                   url: item.url,
                   category: item.category || 'Imported',
                   notes: item.notes || '',
-                  favicon: item.favicon || `https://www.google.com/s2/favicons?domain=${domain}&sz=64`,
+                  favicon: item.favicon || `https://icons.duckduckgo.com/ip3/${domain}.ico`,
                   createdAt: serverTimestamp()
               });
           });

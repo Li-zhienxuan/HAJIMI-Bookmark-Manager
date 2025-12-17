@@ -1,6 +1,6 @@
-import firebase from 'firebase/app';
-import 'firebase/auth';
-import 'firebase/firestore';
+import { initializeApp, FirebaseApp } from 'firebase/app';
+import { getAuth, Auth } from 'firebase/auth';
+import { getFirestore, Firestore } from 'firebase/firestore';
 
 // Configuration handling
 // Supports Vite environment variables (import.meta.env)
@@ -43,13 +43,9 @@ const getFirebaseConfig = () => {
 const config = getFirebaseConfig();
 export const appId = (typeof window !== 'undefined' && window.__app_id) ? window.__app_id : 'default-app-id';
 
-if (!firebase.apps.length) {
-  firebase.initializeApp(config);
-}
-
-const app = firebase.app();
-const auth = firebase.auth();
-const db = firebase.firestore();
+// Initialize Firebase (Modular SDK)
+const app: FirebaseApp = initializeApp(config);
+const auth: Auth = getAuth(app);
+const db: Firestore = getFirestore(app);
 
 export { app, auth, db };
-export default firebase;

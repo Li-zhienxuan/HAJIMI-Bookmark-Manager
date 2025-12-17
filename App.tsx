@@ -1,11 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { 
+  signInWithCustomToken, 
+  signInAnonymously, 
+  onAuthStateChanged,
+  User 
+} from 'firebase/auth';
+import { 
+  collection, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  onSnapshot, 
+  query, 
+  serverTimestamp, 
+  writeBatch 
+} from 'firebase/firestore';
+import { 
   Book, Globe, Plus, Search, Layout, 
   List as ListIcon, Grid as GridIcon, Menu, 
   Database, Users, Lock
 } from 'lucide-react';
 
-import firebase, { auth, db, appId } from './services/firebase';
+import { auth, db, appId } from './services/firebase';
 import { Bookmark, ToastData, StorageMode, ViewMode, ActiveTab, FormData } from './types';
 
 // Components
@@ -18,7 +35,7 @@ import ConfirmModal from './components/ConfirmModal';
 import SidebarItem from './components/SidebarItem';
 
 export default function App() {
-  const [user, setUser] = useState<firebase.User | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   
@@ -53,9 +70,9 @@ export default function App() {
       try {
         console.log("HAJIMI: Initializing Firebase Auth...");
         if (typeof window !== 'undefined' && window.__initial_auth_token) {
-          await auth.signInWithCustomToken(window.__initial_auth_token);
+          await signInWithCustomToken(auth, window.__initial_auth_token);
         } else {
-          await auth.signInAnonymously();
+          await signInAnonymously(auth);
         }
         console.log("HAJIMI: Auth successful.");
       } catch (error) {
@@ -64,7 +81,7 @@ export default function App() {
       }
     };
     initAuth();
-    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
     });
@@ -79,9 +96,12 @@ export default function App() {
       ? `artifacts/${appId}/public/data/bookmarks`
       : `artifacts/${appId}/users/${user.uid}/bookmarks`;
 
-    const collectionRef = db.collection(path);
+    // Modular SDK: collection(db, path)
+    const collectionRef = collection(db, path);
+    // Use query() to make it cleaner, even if just querying the collection
+    const q = query(collectionRef);
     
-    const unsubscribe = collectionRef.onSnapshot((snapshot) => {
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bookmark));
       // Sort in memory for simplicity (newest first)
       docs.sort((a, b) => {
@@ -103,7 +123,7 @@ export default function App() {
     const path = storageMode === 'public'
       ? `artifacts/${appId}/public/data/bookmarks`
       : `artifacts/${appId}/users/${user.uid}/bookmarks`;
-    return db.collection(path);
+    return collection(db, path);
   };
 
   // CRUD Operations
@@ -118,17 +138,20 @@ export default function App() {
       try { domain = new URL(formData.url).hostname; } catch(err) {}
       
       const favicon = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
-      const payload: any = { ...formData, favicon, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+      // Modular SDK: serverTimestamp() import
+      const payload: any = { ...formData, favicon, updatedAt: serverTimestamp() };
 
       if (storageMode === 'public') {
         payload.lastEditor = user.uid.slice(0,6);
       }
 
       if (editingId) {
-         await collectionRef.doc(editingId).update(payload);
+         // Modular SDK: updateDoc(doc(collectionRef, id), data)
+         await updateDoc(doc(collectionRef, editingId), payload);
          showToast("书签已更新");
       } else {
-         await collectionRef.add({ ...payload, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+         // Modular SDK: addDoc(collectionRef, data)
+         await addDoc(collectionRef, { ...payload, createdAt: serverTimestamp() });
          showToast("新书签已添加");
       }
       closeModal();
@@ -149,7 +172,8 @@ export default function App() {
 
     try {
        const collectionRef = getCollectionRef();
-       await collectionRef.doc(id).delete();
+       // Modular SDK: deleteDoc(doc(collectionRef, id))
+       await deleteDoc(doc(collectionRef, id));
        showToast("书签已删除");
     } catch (error) {
       console.error("Deletion failed:", error);
@@ -184,10 +208,12 @@ export default function App() {
       
       for (let i = 0; i < newItems.length; i += CHUNK_SIZE) {
           const chunk = newItems.slice(i, i + CHUNK_SIZE);
-          const batch = db.batch();
+          // Modular SDK: writeBatch(db)
+          const batch = writeBatch(db);
           
           chunk.forEach(item => {
-              const docRef = collectionRef.doc(); 
+              // Modular SDK: doc(collectionRef) creates a new doc reference with auto ID
+              const docRef = doc(collectionRef); 
               let domain = 'unknown';
               try { domain = new URL(item.url).hostname; } catch(e) {}
               
@@ -197,7 +223,7 @@ export default function App() {
                   category: item.category || 'Imported',
                   notes: item.notes || '',
                   favicon: item.favicon || `https://www.google.com/s2/favicons?domain=${domain}&sz=64`,
-                  createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                  createdAt: serverTimestamp()
               });
           });
           

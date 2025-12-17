@@ -1,0 +1,5 @@
+{
+  "name": "HAJIMI Bookmark Manager",
+  "description": "A robust, cross-platform bookmark manager supporting public/private workspaces, import/export capabilities, and real-time synchronization via Firebase.",
+  "requestFramePermissions": []
+}

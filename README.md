@@ -58,6 +58,18 @@ HAJIMI 是一个现代化的、跨平台的书签管理器，专为极简主义�
    - `VITE_FIREBASE_MESSAGING_SENDER_ID`
    - `VITE_FIREBASE_APP_ID`
 
+## ⚠️ Firebase 配置重要说明
+
+为了让应用正常工作，您必须在 Firebase Console 中进行以下配置：
+
+1. **启用 Firestore 数据库**: 在 "Build" > "Firestore Database" 中创建数据库。
+2. **启用 Authentication**: 在 "Build" > "Authentication" 中点击 "Get started"。
+3. **启用匿名登录 (Anonymous)**:
+   - 进入 "Authentication" > "Sign-in method" 标签页。
+   - 找到 "Anonymous" 提供商。
+   - 开启并保存。
+   - **如果未开启此项，应用会报错 `auth/configuration-not-found`。**
+
 ## 📄 环境变量说明 (.env)
 
 为了安全起见，本地开发请使用 `.env` 文件，生产环境请在部署平台设置。

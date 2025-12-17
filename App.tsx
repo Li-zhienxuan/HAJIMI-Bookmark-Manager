@@ -19,7 +19,7 @@ import {
 import { 
   Book, Globe, Plus, Search, Layout, 
   List as ListIcon, Grid as GridIcon, Menu, 
-  Database, Users, Lock, Settings
+  Database, Users, Lock, Settings, ShieldAlert
 } from 'lucide-react';
 
 import { auth, db, appId, isConfigured } from './services/firebase';
@@ -38,6 +38,9 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+  
+  // Error States
+  const [authSetupError, setAuthSetupError] = useState<string | null>(null);
   
   // UI State
   const [viewMode, setViewMode] = useState<ViewMode>('grid'); 
@@ -66,9 +69,11 @@ export default function App() {
 
   // Auth Initialization
   useEffect(() => {
+    let mounted = true;
+
     const initAuth = async () => {
       if (!isConfigured) {
-        setLoading(false);
+        if(mounted) setLoading(false);
         return;
       }
       
@@ -77,30 +82,53 @@ export default function App() {
         if (typeof window !== 'undefined' && window.__initial_auth_token) {
           await signInWithCustomToken(auth, window.__initial_auth_token);
         } else {
+          // This will throw 'auth/configuration-not-found' if Anonymous auth is not enabled in Console
           await signInAnonymously(auth);
         }
         console.log("HAJIMI: Auth successful.");
       } catch (error: any) {
         console.error("Auth failed", error);
-        // Don't show generic error if it is likely a config issue not caught by isConfigured
-        if (error?.code === 'auth/api-key-not-valid' || error?.message?.includes('api-key')) {
-           // Should be handled by isConfigured check, but just in case
-        } else {
-           showToast("Authentication failed", "error");
+        
+        if (!mounted) return;
+
+        // Specific handling for common setup errors
+        if (error?.code === 'auth/configuration-not-found' || error?.code === 'auth/operation-not-allowed') {
+          setAuthSetupError("Anonymous Authentication is disabled in Firebase Console.");
+          setLoading(false);
+          return;
         }
+        
+        if (error?.code === 'auth/api-key-not-valid') {
+           // handled by isConfigured mostly, but fallback
+           setAuthSetupError("API Key is invalid.");
+           setLoading(false);
+           return;
+        }
+
+        // For other errors, we might still want to show the app (offline mode?) but usually auth is required.
+        // We'll show a toast but allow the app to try and render (user will be null)
+        showToast("Authentication failed: " + error.message, "error");
       }
     };
+
     initAuth();
+
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (!mounted) return;
       setUser(currentUser);
-      setLoading(false);
+      // Only turn off loading if we haven't hit a blocking error
+      setLoading((prev) => prev && false); 
     });
-    return () => unsubscribe();
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
   }, []);
 
   // Data Listener
   useEffect(() => {
-    if (!user || !isConfigured) return;
+    if (!user || !isConfigured || authSetupError) return;
 
     const path = storageMode === 'public'
       ? `artifacts/${appId}/public/data/bookmarks`
@@ -119,11 +147,14 @@ export default function App() {
       setBookmarks(docs);
     }, (error) => {
       console.error("Data error:", error);
-      showToast("无法加载数据，请检查网络", "error");
+      // Ignore permission errors that happen during auth transitions
+      if (error.code !== 'permission-denied') {
+        showToast("无法加载数据，请检查网络", "error");
+      }
     });
 
     return () => unsubscribe();
-  }, [user, storageMode]);
+  }, [user, storageMode, authSetupError]);
 
   const getCollectionRef = () => {
     if (!user) throw new Error("Not authenticated");
@@ -338,10 +369,37 @@ export default function App() {
     );
   }
 
+  if (authSetupError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-slate-950 text-slate-300 p-6 text-center">
+         <div className="bg-slate-900 p-8 rounded-2xl border border-slate-800 max-w-md shadow-2xl animate-in fade-in slide-in-from-bottom-4">
+           <div className="w-16 h-16 bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+              <ShieldAlert size={32} className="text-amber-500"/>
+           </div>
+           <h1 className="text-2xl font-bold text-white mb-4">Authentication Setup Required</h1>
+           <p className="mb-6 text-slate-400 text-sm">
+             The app is connected to Firebase, but <b>Anonymous Authentication</b> is disabled.
+           </p>
+           <div className="text-left bg-slate-950 p-4 rounded-lg border border-slate-800 mb-6">
+             <ol className="list-decimal list-inside text-sm text-slate-400 space-y-2">
+               <li>Go to <a href="https://console.firebase.google.com" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">Firebase Console</a></li>
+               <li>Select your project and click <b>Build &gt; Authentication</b></li>
+               <li>Click the <b>Sign-in method</b> tab</li>
+               <li>Enable the <b>Anonymous</b> provider</li>
+             </ol>
+           </div>
+           <button onClick={() => window.location.reload()} className="block w-full py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors">
+             I've Enabled It, Reload App
+           </button>
+         </div>
+      </div>
+    );
+  }
+
   if (loading) return (
     <div className="flex h-screen bg-slate-950 items-center justify-center text-slate-500">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mr-3"></div>
-      加载中...
+      Loading...
     </div>
   );
 

@@ -1,6 +1,11 @@
 import { initializeApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
-import { getFirestore, Firestore } from 'firebase/firestore';
+import { 
+  initializeFirestore, 
+  Firestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager 
+} from 'firebase/firestore';
 
 // Configuration handling
 // Supports Vite environment variables (import.meta.env)
@@ -46,6 +51,12 @@ export const appId = (typeof window !== 'undefined' && window.__app_id) ? window
 // Initialize Firebase (Modular SDK)
 const app: FirebaseApp = initializeApp(config);
 const auth: Auth = getAuth(app);
-const db: Firestore = getFirestore(app);
+
+// Initialize Firestore with Persistent Local Cache (Critical for reducing costs on public reads)
+const db: Firestore = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  })
+});
 
 export { app, auth, db };

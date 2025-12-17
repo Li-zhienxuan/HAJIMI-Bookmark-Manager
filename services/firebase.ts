@@ -48,6 +48,9 @@ const getFirebaseConfig = () => {
 const config = getFirebaseConfig();
 export const appId = (typeof window !== 'undefined' && window.__app_id) ? window.__app_id : 'default-app-id';
 
+// Flag to check if configuration is valid (not placeholder)
+export const isConfigured = config.apiKey !== "YOUR_API_KEY" && config.apiKey !== "";
+
 // Initialize Firebase (Modular SDK)
 const app: FirebaseApp = initializeApp(config);
 const auth: Auth = getAuth(app);

@@ -19,10 +19,10 @@ import {
 import { 
   Book, Globe, Plus, Search, Layout, 
   List as ListIcon, Grid as GridIcon, Menu, 
-  Database, Users, Lock
+  Database, Users, Lock, Settings
 } from 'lucide-react';
 
-import { auth, db, appId } from './services/firebase';
+import { auth, db, appId, isConfigured } from './services/firebase';
 import { Bookmark, ToastData, StorageMode, ViewMode, ActiveTab, FormData } from './types';
 
 // Components
@@ -67,6 +67,11 @@ export default function App() {
   // Auth Initialization
   useEffect(() => {
     const initAuth = async () => {
+      if (!isConfigured) {
+        setLoading(false);
+        return;
+      }
+      
       try {
         console.log("HAJIMI: Initializing Firebase Auth...");
         if (typeof window !== 'undefined' && window.__initial_auth_token) {
@@ -75,9 +80,14 @@ export default function App() {
           await signInAnonymously(auth);
         }
         console.log("HAJIMI: Auth successful.");
-      } catch (error) {
+      } catch (error: any) {
         console.error("Auth failed", error);
-        showToast("Authentication failed", "error");
+        // Don't show generic error if it is likely a config issue not caught by isConfigured
+        if (error?.code === 'auth/api-key-not-valid' || error?.message?.includes('api-key')) {
+           // Should be handled by isConfigured check, but just in case
+        } else {
+           showToast("Authentication failed", "error");
+        }
       }
     };
     initAuth();
@@ -90,20 +100,17 @@ export default function App() {
 
   // Data Listener
   useEffect(() => {
-    if (!user) return;
+    if (!user || !isConfigured) return;
 
     const path = storageMode === 'public'
       ? `artifacts/${appId}/public/data/bookmarks`
       : `artifacts/${appId}/users/${user.uid}/bookmarks`;
 
-    // Modular SDK: collection(db, path)
     const collectionRef = collection(db, path);
-    // Use query() to make it cleaner, even if just querying the collection
     const q = query(collectionRef);
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bookmark));
-      // Sort in memory for simplicity (newest first)
       docs.sort((a, b) => {
           const tA = a.createdAt?.seconds || 0;
           const tB = b.createdAt?.seconds || 0;
@@ -138,7 +145,6 @@ export default function App() {
       try { domain = new URL(formData.url).hostname; } catch(err) {}
       
       const favicon = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
-      // Modular SDK: serverTimestamp() import
       const payload: any = { ...formData, favicon, updatedAt: serverTimestamp() };
 
       if (storageMode === 'public') {
@@ -146,11 +152,9 @@ export default function App() {
       }
 
       if (editingId) {
-         // Modular SDK: updateDoc(doc(collectionRef, id), data)
          await updateDoc(doc(collectionRef, editingId), payload);
          showToast("书签已更新");
       } else {
-         // Modular SDK: addDoc(collectionRef, data)
          await addDoc(collectionRef, { ...payload, createdAt: serverTimestamp() });
          showToast("新书签已添加");
       }
@@ -172,7 +176,6 @@ export default function App() {
 
     try {
        const collectionRef = getCollectionRef();
-       // Modular SDK: deleteDoc(doc(collectionRef, id))
        await deleteDoc(doc(collectionRef, id));
        showToast("书签已删除");
     } catch (error) {
@@ -208,11 +211,9 @@ export default function App() {
       
       for (let i = 0; i < newItems.length; i += CHUNK_SIZE) {
           const chunk = newItems.slice(i, i + CHUNK_SIZE);
-          // Modular SDK: writeBatch(db)
           const batch = writeBatch(db);
           
           chunk.forEach(item => {
-              // Modular SDK: doc(collectionRef) creates a new doc reference with auto ID
               const docRef = doc(collectionRef); 
               let domain = 'unknown';
               try { domain = new URL(item.url).hostname; } catch(e) {}
@@ -308,6 +309,34 @@ export default function App() {
   
   const categories = ['all', ...Array.from(new Set(bookmarks.map(b => b.category || 'General')))];
   const themeColor = storageMode === 'public' ? 'purple' : 'blue';
+
+  if (!isConfigured) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-slate-950 text-slate-300 p-6 text-center">
+         <div className="bg-slate-900 p-8 rounded-2xl border border-slate-800 max-w-md shadow-2xl animate-in fade-in slide-in-from-bottom-4">
+           <div className="w-16 h-16 bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Settings size={32} className="text-red-500"/>
+           </div>
+           <h1 className="text-2xl font-bold text-white mb-4">Configuration Required</h1>
+           <p className="mb-6 text-slate-400 text-sm">
+             Firebase connection settings are missing. Please configure your environment variables to continue.
+           </p>
+           <div className="bg-slate-950 p-4 rounded-lg text-left text-[10px] font-mono overflow-x-auto border border-slate-800 mb-6 whitespace-pre text-slate-500">
+              <div className="text-slate-400 font-bold mb-2">.env or Cloudflare Pages Variables</div>
+              VITE_FIREBASE_API_KEY=...{"\n"}
+              VITE_FIREBASE_AUTH_DOMAIN=...{"\n"}
+              VITE_FIREBASE_PROJECT_ID=...{"\n"}
+              VITE_FIREBASE_STORAGE_BUCKET=...{"\n"}
+              VITE_FIREBASE_MESSAGING_SENDER_ID=...{"\n"}
+              VITE_FIREBASE_APP_ID=...
+           </div>
+           <a href="https://console.firebase.google.com" target="_blank" rel="noreferrer" className="block w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">
+             Go to Firebase Console
+           </a>
+         </div>
+      </div>
+    );
+  }
 
   if (loading) return (
     <div className="flex h-screen bg-slate-950 items-center justify-center text-slate-500">

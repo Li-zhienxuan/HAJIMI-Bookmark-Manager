@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Book, Globe, Plus, Search, Layout, 
   List as ListIcon, Grid as GridIcon, Menu, 
-  Database, Users, Lock, RefreshCw, Hash, Tag, Sparkles
+  Database, Users, Lock, RefreshCw, Hash, Tag, Sparkles, Brain
 } from 'lucide-react';
 
 import { localDb } from './services/storage';
@@ -17,6 +17,7 @@ import BrowserPreview from './components/BrowserPreview';
 import ConfirmModal from './components/ConfirmModal';
 import SidebarItem from './components/SidebarItem';
 import WelcomeModal from './components/WelcomeModal';
+import AnalyticsPanel from './components/AnalyticsPanel';
 
 export default function App() {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
@@ -42,7 +43,6 @@ export default function App() {
   const [formData, setFormData] = useState<FormData>({ title: '', url: '', category: '', notes: '' });
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // 测试模式相关状态
   const [isTestMode, setIsTestMode] = useState(() => localStorage.getItem('hajimi_test_mode') === 'true');
 
   const showToast = (msg: string, type: 'success' | 'error' = 'success') => setToast({ msg, type });
@@ -99,6 +99,21 @@ export default function App() {
     }
   };
 
+  const handleBookmarkClick = (bookmark: Bookmark) => {
+    setCurrentUrl(bookmark.url);
+    setShowBrowser(true);
+    
+    // Update stats
+    const updated = bookmarks.map(b => b.id === bookmark.id ? { 
+      ...b, 
+      clickCount: (b.clickCount || 0) + 1, 
+      lastUsedAt: Date.now() 
+    } : b);
+    
+    setBookmarks(updated);
+    localDb.saveLocal(storageMode, updated);
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title || !formData.url) return;
@@ -116,7 +131,15 @@ export default function App() {
         newBookmarks = newBookmarks.map(b => b.id === editingId ? { ...b, ...formData, category: cleanCategory, favicon, updatedAt: now } : b);
         showToast("书签已更新");
       } else {
-        const newBookmark: Bookmark = { id: localDb.generateId(), ...formData, category: cleanCategory, favicon, createdAt: now, updatedAt: now };
+        const newBookmark: Bookmark = { 
+          id: localDb.generateId(), 
+          ...formData, 
+          category: cleanCategory, 
+          favicon, 
+          createdAt: now, 
+          updatedAt: now,
+          clickCount: 0 
+        };
         newBookmarks = [newBookmark, ...newBookmarks];
         showToast("新书签已添加");
       }
@@ -178,7 +201,8 @@ export default function App() {
         category: item.category || '未分类',
         notes: item.notes || '',
         favicon: `https://api.iowen.cn/favicon/${new URL(item.url).hostname}.png`,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        clickCount: 0
       }));
 
     if (newItems.length === 0) {
@@ -313,6 +337,13 @@ export default function App() {
             count={bookmarks.length}
           />
           <SidebarItem 
+            icon={<Brain size={18} />} 
+            label="习惯与 ML 分析" 
+            active={activeTab === 'analytics'} 
+            onClick={() => {setActiveTab('analytics'); setSidebarOpen(false);}} 
+            theme={themeColor} 
+          />
+          <SidebarItem 
             icon={<Database size={18} />} 
             label="同步与设置" 
             active={activeTab === 'settings'} 
@@ -365,8 +396,8 @@ export default function App() {
           </div>
           <div className="flex items-center space-x-3">
              <div className="hidden md:flex bg-slate-800/50 rounded-xl p-1 border border-slate-700/50">
-               <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}><GridIcon size={16} /></button>
-               <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-lg transition-all ${viewMode === 'list' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}><ListIcon size={16} /></button>
+               <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-300'}`}><GridIcon size={16} /></button>
+               <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-lg transition-all ${viewMode === 'list' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-300'}`}><ListIcon size={16} /></button>
              </div>
              <button onClick={() => setShowAddModal(true)} className={`${storageMode === 'public' ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-500/20' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'} text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center transition-all active:scale-95 shadow-lg`}>
                <Plus size={18} className="mr-1.5" /> 新建
@@ -389,6 +420,8 @@ export default function App() {
               setIsTestMode={setIsTestMode}
               onClearDatabase={handleClearDatabase}
             />
+          ) : activeTab === 'analytics' ? (
+            <AnalyticsPanel bookmarks={bookmarks} mode={storageMode} onDelete={handleDelete} />
           ) : (
             <div className="animate-in fade-in duration-500">
               <div className="mb-6 flex items-center justify-between">
@@ -411,7 +444,7 @@ export default function App() {
               ) : ( 
                 <div className={viewMode === 'grid' ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" : "space-y-2"}>
                   {filtered.map(b => (
-                    <BookmarkCard key={b.id} bookmark={b} mode={viewMode} onDelete={handleDelete} onEdit={handleEdit} onOpen={() => { setCurrentUrl(b.url); setShowBrowser(true); }} isPublic={storageMode === 'public'}/>
+                    <BookmarkCard key={b.id} bookmark={b} mode={viewMode} onDelete={handleDelete} onEdit={handleEdit} onOpen={() => handleBookmarkClick(b)} isPublic={storageMode === 'public'}/>
                   ))}
                 </div>
               )}

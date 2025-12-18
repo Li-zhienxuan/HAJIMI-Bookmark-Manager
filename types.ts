@@ -7,6 +7,8 @@ export interface Bookmark {
   favicon?: string;
   createdAt?: number;
   updatedAt?: number;
+  lastUsedAt?: number;
+  clickCount: number;
   lastEditor?: string;
 }
 
@@ -28,7 +30,7 @@ export interface ToastData {
 
 export type StorageMode = 'private' | 'public';
 export type ViewMode = 'grid' | 'list';
-export type ActiveTab = 'all' | 'settings';
+export type ActiveTab = 'all' | 'settings' | 'analytics';
 
 export interface FormData {
   title: string;

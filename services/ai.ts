@@ -1,9 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Bookmark } from "../types";
 
-// 初始化 AI 客户端（密钥由环境提供）
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 export interface AISuggestion {
   category: string;
   notes: string;
@@ -11,13 +8,17 @@ export interface AISuggestion {
 
 export const aiService = {
   /**
-   * 根据 URL 和标题建议分类和备注
+   * 根据 URL 和标题建议分类 and 备注
    * @param url 网址
    * @param title 标题
    * @param existingCategories 现有分类列表（用于学习用户习惯）
    */
   async suggestCategory(url: string, title: string, existingCategories: string[]): Promise<AISuggestion | null> {
     try {
+      // Fix: Always initialize the GoogleGenAI instance right before making the API call 
+      // to ensure it uses the current value of process.env.API_KEY.
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
       const prompt = `
         你是一个专业的书签管理助手。
         任务：根据提供的 URL 和标题，预测它最适合的分类，并简要描述这个网站。
@@ -48,10 +49,12 @@ export const aiService = {
             },
             required: ["category", "notes"]
           },
-          thinkingConfig: { thinkingBudget: 0 } // 简单任务禁用思考以降低延迟
+          // Thinking config is enabled for Gemini 3 models; here we disable it to minimize latency.
+          thinkingConfig: { thinkingBudget: 0 }
         }
       });
 
+      // Fix: Access the text property directly (not a method call).
       const text = response.text;
       if (text) {
         return JSON.parse(text) as AISuggestion;

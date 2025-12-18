@@ -10,3 +10,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+// Fixed: Removed the manual 'process' declaration which conflicted with the environment's global definition.
+// The environment variable process.env.API_KEY is assumed to be pre-configured and accessible.

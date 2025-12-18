@@ -68,6 +68,13 @@ export default function App() {
     showToast(`${storageMode === 'public' ? '公共' : '私有'}数据库已清空`, "success");
   };
 
+  const handleUpdateBookmarks = (updated: Bookmark[]) => {
+    setBookmarks(updated);
+    localDb.saveLocal(storageMode, updated);
+    const config = localDb.loadSyncConfig();
+    if (config && config.token) handleCloudSync('push');
+  };
+
   const handleCloudSync = async (type: 'pull' | 'push' | 'both' = 'both') => {
     const config = localDb.loadSyncConfig();
     if (!config || !config.token) {
@@ -338,7 +345,7 @@ export default function App() {
           />
           <SidebarItem 
             icon={<Brain size={18} />} 
-            label="习惯与 ML 分析" 
+            label="智能整理与分析" 
             active={activeTab === 'analytics'} 
             onClick={() => {setActiveTab('analytics'); setSidebarOpen(false);}} 
             theme={themeColor} 
@@ -352,7 +359,7 @@ export default function App() {
           />
           
           <div className="px-4 mt-6 mb-2 flex items-center justify-between">
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">书签分类</span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">文件夹 (分类)</span>
             <Tag size={10} className="text-slate-600" />
           </div>
 
@@ -421,7 +428,12 @@ export default function App() {
               onClearDatabase={handleClearDatabase}
             />
           ) : activeTab === 'analytics' ? (
-            <AnalyticsPanel bookmarks={bookmarks} mode={storageMode} onDelete={handleDelete} />
+            <AnalyticsPanel 
+              bookmarks={bookmarks} 
+              mode={storageMode} 
+              onDelete={handleDelete}
+              onUpdateBookmarks={handleUpdateBookmarks} 
+            />
           ) : (
             <div className="animate-in fade-in duration-500">
               <div className="mb-6 flex items-center justify-between">

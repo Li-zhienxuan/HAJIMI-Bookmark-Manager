@@ -60,7 +60,7 @@ const WelcomeModal: React.FC<WelcomeModalProps> = ({ isOpen, onClose }) => {
                 <span className="bg-slate-800 text-purple-400 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 mt-0.5 flex-shrink-0">3</span>
                 <div>
                   <p className="text-sm font-medium text-slate-200">生成访问令牌 (Token)</p>
-                  <p className="text-xs text-slate-500 mt-1">在 [个人设置] -> [访问令牌] 中创建一个新 Token，勾选 <code>repo</code> 读写权限。</p>
+                  <p className="text-xs text-slate-500 mt-1">在 [个人设置] → [访问令牌] 中创建一个新 Token，勾选 <code>repo</code> 读写权限。</p>
                 </div>
               </div>
               <div className="flex items-start">

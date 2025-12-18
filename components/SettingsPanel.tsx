@@ -56,7 +56,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <li><strong>注册登录</strong>：访问 <a href="https://cnb.cool" target="_blank" rel="noreferrer" className="text-blue-400 underline">cnb.cool</a>。</li>
             <li><strong>创建仓库</strong>：新建一个私有或公开仓库（如：<code className="text-blue-300 bg-blue-500/10 px-1">bookmarks</code>）。</li>
             <li><strong>用户名 (Owner)</strong>：您的 CNB 账号名。</li>
-            <li><strong>获取 Token</strong>：进入 [设置] -> [访问令牌]，创建一个 Token。</li>
+            <li><strong>获取 Token</strong>：进入 [设置] → [访问令牌]，创建一个 Token。</li>
             <li><strong>权限勾选</strong>：至少勾选 <code className="text-slate-300">repo</code> 权限以允许文件读写。</li>
           </ol>
           <div className="pt-2 flex space-x-4">

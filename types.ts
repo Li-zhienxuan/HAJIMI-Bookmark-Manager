@@ -5,12 +5,15 @@ export interface Bookmark {
   category: string;
   notes?: string;
   favicon?: string;
-  createdAt?: number; // Unix timestamp
+  createdAt?: number;
   updatedAt?: number;
   lastEditor?: string;
 }
 
-export interface GitHubConfig {
+export type ProviderType = 'github' | 'cnb' | 'local';
+
+export interface SyncConfig {
+  provider: ProviderType;
   token: string;
   owner: string;
   repo: string;

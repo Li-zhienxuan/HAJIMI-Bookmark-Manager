@@ -1,76 +1,43 @@
-# HAJIMI Bookmark Manager
+# HAJIMI Bookmark Manager (CNB & GitHub Edition)
 
-HAJIMI is a robust, cross-platform bookmark manager designed for minimalists. It supports both public and private workspaces with real-time data synchronization.
+HAJIMI is a local-first bookmark management tool that utilizes your personal Git repository as a backend. It synchronizes your data via CNB (Tencent Cloud Native) or GitHub APIs.
 
-## ✨ Features
+## I. Introduction
 
-- **Dual Workspace Modes**:
-  - 🔒 **Private Mode**: Personal bookmarks visible only to you (secured via Firebase Auth).
-  - 🌍 **Public Mode**: A shared repository for team resources or public navigation.
-- **Real-time Sync**: Powered by Google Firebase Firestore for instant updates across devices.
-- **Import/Export**:
-  - Import bookmarks from standard HTML files (Chrome/Edge/Firefox).
-  - Backup and restore using a dedicated JSON format.
-- **Modern UI**:
-  - Fully responsive design built with Tailwind CSS.
-  - Toggle between Grid and List views.
-  - Immersive Dark Mode interface.
-- **Smart Utilities**: Automatic Favicon extraction.
+This application is designed to address concerns regarding data privacy and the limitations of third-party cloud services. By treating your Git repository as a database, all your bookmarks are stored as a structured JSON file under your complete control.
 
-## 🛠️ Tech Stack
+## II. Key Features
 
-- **Frontend**: React 18, TypeScript, Tailwind CSS
-- **Icons**: Lucide React
-- **Backend/Cloud**: Google Firebase (Authentication, Firestore)
-- **Build Tool**: Vite
+1. **Data Sovereignty**: Your bookmarks live in your repository as a `bookmarks.json` file.
+2. **Flexible Sync**: Native support for both CNB (optimized for China) and GitHub.
+3. **Privacy Focused**: Access tokens are stored exclusively in the browser's local storage.
+4. **Offline Capability**: The local-first architecture ensures instant search and access even without an internet connection.
+5. **Easy Migration**: Import existing data from standard browser HTML exports or HAJIMI JSON backups.
 
-## 🚀 Local Development
+## III. Getting Started
 
-1. **Install Dependencies**
-   ```bash
-   npm install
-   ```
+1. **Create a Repository**: Set up a new repository (e.g., `bookmarks`) on [GitHub](https://github.com) or [CNB](https://cnb.cool).
+2. **Generate Access Token**:
+   - For **GitHub**: Go to Settings -> Developer settings -> Personal access tokens (repo scope).
+   - For **CNB**: Go to Settings -> Access Tokens (repo scope).
+3. **Configure the App**:
+   - Open the **Sync & Settings** panel in HAJIMI.
+   - Select your provider and enter your Username, Repo Name, and Token.
+   - Save the configuration and click **Sync Now**.
 
-2. **Environment Setup**
-   Create a `.env` file in the root directory (see configuration below).
+## IV. FAQ and Alternatives
 
-3. **Start Server**
-   ```bash
-   npm run dev
-   ```
+1. **What if I don't have a GitHub account?**
+   - Option 1: Use CNB. It provides excellent connectivity and a professional environment for developers in various regions.
+   - Option 2: Standalone Mode. Use the app without any cloud configuration; data remains in your browser's local storage.
+   - Option 3: Manual Export. Regularly download your data using the "Export Backup (JSON)" feature for manual storage.
 
-## 📦 Deploy to Cloudflare Pages
+2. **How to import bookmarks from a browser?**
+   - Export your bookmarks as an HTML file from Chrome, Edge, or Firefox, then use the "Import from Browser (HTML)" tool in HAJIMI.
 
-This project is configured with Vite, making it ready for Cloudflare Pages or Vercel.
+## V. Technical Stack
 
-1. Push your code to GitHub.
-2. Create a new project in Cloudflare Pages and connect your repository.
-3. **Build Settings**:
-   - **Framework preset**: Vite
-   - **Build command**: `npm run build`
-   - **Output directory**: `dist`
-4. **Environment Variables**:
-   Set the following variables in the Cloudflare dashboard:
-   - `VITE_FIREBASE_API_KEY`
-   - `VITE_FIREBASE_AUTH_DOMAIN`
-   - `VITE_FIREBASE_PROJECT_ID`
-   - `VITE_FIREBASE_STORAGE_BUCKET`
-   - `VITE_FIREBASE_MESSAGING_SENDER_ID`
-   - `VITE_FIREBASE_APP_ID`
-
-## 📄 Environment Variables (.env)
-
-Use a `.env` file for local development and platform settings for production.
-
-```env
-VITE_FIREBASE_API_KEY=your_api_key
-VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your_project_id
-VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
-VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-VITE_FIREBASE_APP_ID=your_app_id
-```
-
-## 📝 License
-
-MIT
+1. **Framework**: React 19, TypeScript
+2. **Styling**: Tailwind CSS
+3. **Icons**: Lucide React
+4. **Storage Protocol**: Git REST API (OpenAPI)

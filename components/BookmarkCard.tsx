@@ -1,5 +1,5 @@
 import React from 'react';
-import { Globe, Edit2, Trash2 } from 'lucide-react';
+import { Globe, Edit2, Trash2, Flame } from 'lucide-react';
 import { Bookmark, ViewMode } from '../types';
 
 interface BookmarkCardProps {
@@ -19,6 +19,8 @@ const BookmarkCard: React.FC<BookmarkCardProps> = ({ bookmark, mode, onDelete, o
     // invalid url fallback
   }
   
+  const isHighFreq = (bookmark.clickCount || 0) >= 10;
+
   if (mode === 'list') {
     return (
       <div 
@@ -31,7 +33,10 @@ const BookmarkCard: React.FC<BookmarkCardProps> = ({ bookmark, mode, onDelete, o
              <Globe size={14} className="text-slate-600 absolute z-0"/>
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-slate-200 font-medium truncate text-sm">{bookmark.title}</h3>
+            <div className="flex items-center">
+              <h3 className="text-slate-200 font-medium truncate text-sm">{bookmark.title}</h3>
+              {isHighFreq && <Flame size={12} className="ml-2 text-rose-500 flex-shrink-0" />}
+            </div>
             <p className="text-[10px] text-slate-500 font-mono truncate">{domain}</p>
           </div>
         </div>
@@ -70,6 +75,7 @@ const BookmarkCard: React.FC<BookmarkCardProps> = ({ bookmark, mode, onDelete, o
         <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center flex-shrink-0 border border-slate-700 relative overflow-hidden">
              <img src={bookmark.favicon} className="w-5 h-5 relative z-10" onError={(e) => { (e.target as HTMLImageElement).style.display='none'; }} alt=""/>
              <Globe size={16} className="text-slate-600 absolute z-0"/>
+             {isHighFreq && <div className="absolute top-0 right-0 p-0.5 bg-slate-900/80 rounded-bl-lg"><Flame size={10} className="text-rose-500" /></div>}
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="text-slate-200 font-medium truncate text-sm leading-tight mb-1">{bookmark.title}</h3>
@@ -78,8 +84,15 @@ const BookmarkCard: React.FC<BookmarkCardProps> = ({ bookmark, mode, onDelete, o
       </div>
       {bookmark.notes && <p className="text-xs text-slate-400 line-clamp-2 mb-3">{bookmark.notes}</p>}
       <div className="mt-auto pt-3 border-t border-slate-800/50 flex justify-between items-center">
-         <span className={`text-[10px] px-1.5 py-0.5 rounded ${isPublic ? 'bg-purple-900/30 text-purple-400' : 'bg-blue-900/30 text-blue-400'}`}>{bookmark.category}</span>
-         {isPublic && bookmark.lastEditor && <span className="text-[9px] text-slate-600">By: {bookmark.lastEditor}</span>}
+         <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${isPublic ? 'bg-purple-900/30 text-purple-400' : 'bg-blue-900/30 text-blue-400'}`}>{bookmark.category}</span>
+         <div className="flex items-center space-x-2">
+            {bookmark.clickCount > 0 && (
+              <span className="flex items-center text-[9px] text-slate-500">
+                <Flame size={8} className={`mr-0.5 ${isHighFreq ? 'text-rose-500' : ''}`} /> {bookmark.clickCount}
+              </span>
+            )}
+            {isPublic && bookmark.lastEditor && <span className="text-[9px] text-slate-600">By: {bookmark.lastEditor}</span>}
+         </div>
       </div>
     </div>
   );

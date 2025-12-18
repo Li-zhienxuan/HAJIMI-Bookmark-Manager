@@ -1,28 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  signInWithCustomToken, 
-  signInAnonymously, 
-  onAuthStateChanged,
-  User 
-} from 'firebase/auth';
-import { 
-  collection, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  doc, 
-  onSnapshot, 
-  query, 
-  serverTimestamp, 
-  writeBatch 
-} from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
 import { 
   Book, Globe, Plus, Search, Layout, 
   List as ListIcon, Grid as GridIcon, Menu, 
-  Database, Users, Lock, Settings, ShieldAlert
+  Database, Users, Lock, Settings, Info, Github, RefreshCw
 } from 'lucide-react';
 
-import { auth, db, appId, isConfigured } from './services/firebase';
+import { localDb } from './services/storage';
 import { Bookmark, ToastData, StorageMode, ViewMode, ActiveTab, FormData } from './types';
 
 // Components
@@ -35,12 +18,9 @@ import ConfirmModal from './components/ConfirmModal';
 import SidebarItem from './components/SidebarItem';
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
-  
-  // Error States
-  const [authSetupError, setAuthSetupError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   
   // UI State
   const [viewMode, setViewMode] = useState<ViewMode>('grid'); 
@@ -58,7 +38,7 @@ export default function App() {
   const [toast, setToast] = useState<ToastData | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState<{ visible: boolean, id: string | null }>({ visible: false, id: null });
   
-  // STORAGE MODE: 'private' (users/{uid}) or 'public' (public/data)
+  // STORAGE MODE: Local Storage separates 'private' and 'public' by keys
   const [storageMode, setStorageMode] = useState<StorageMode>('private');
 
   // Form State
@@ -66,143 +46,93 @@ export default function App() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const showToast = (msg: string, type: 'success' | 'error' = 'success') => setToast({ msg, type });
-  
-  // Refs to track mounting status to prevent setting state on unmounted components
-  const isMounted = useRef(true);
 
+  // Initial Data Load
   useEffect(() => {
-    isMounted.current = true;
-    return () => { isMounted.current = false; };
-  }, []);
+    const data = localDb.loadLocal(storageMode);
+    setBookmarks(data);
+    setLoading(false);
+    
+    // Auto-pull from GitHub if configured
+    const ghConfig = localDb.loadGitHubConfig();
+    if (ghConfig && ghConfig.token) {
+      handleGitHubSync('pull');
+    }
+  }, [storageMode]);
 
-  // Auth Initialization
-  useEffect(() => {
-    if (!isConfigured) {
-      setLoading(false);
+  const handleGitHubSync = async (type: 'pull' | 'push' | 'both' = 'both') => {
+    const ghConfig = localDb.loadGitHubConfig();
+    if (!ghConfig || !ghConfig.token) {
+      if (type !== 'pull') showToast("请先在设置中配置 GitHub Token", "error");
       return;
     }
 
-    let unsubscribe = () => {};
-
-    const initAuth = async () => {
-      try {
-        console.log("HAJIMI: Initializing Firebase Auth...");
-        
-        // Listen to auth state changes FIRST
-        unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-          if (!isMounted.current) return;
-          setUser(currentUser);
-          // If we have a user, or if we determined we are not loading anymore
-          if (currentUser) {
-            setLoading(false);
-            setAuthSetupError(null);
-          }
-        });
-
-        if (typeof window !== 'undefined' && window.__initial_auth_token) {
-          await signInWithCustomToken(auth, window.__initial_auth_token);
-        } else {
-          // Attempt sign in. If this throws (e.g. config error), we catch it below.
-          await signInAnonymously(auth);
+    setIsSyncing(true);
+    try {
+      if (type === 'pull' || type === 'both') {
+        const remoteData = await localDb.fetchFromGitHub(ghConfig);
+        if (remoteData.length > 0) {
+          setBookmarks(remoteData);
+          localDb.saveLocal(storageMode, remoteData);
+          if (type === 'pull') showToast("已从 GitHub 同步最新数据");
         }
-        console.log("HAJIMI: Auth successful or pending...");
-      } catch (error: any) {
-        console.error("Auth failed", error);
-        
-        if (!isMounted.current) return;
-
-        // Specific handling for common setup errors
-        if (error?.code === 'auth/configuration-not-found' || error?.code === 'auth/operation-not-allowed') {
-          setAuthSetupError("Anonymous Authentication is disabled in Firebase Console.");
-          setLoading(false);
-          return;
-        }
-        
-        if (error?.code === 'auth/api-key-not-valid') {
-           setAuthSetupError("API Key is invalid.");
-           setLoading(false);
-           return;
-        }
-
-        showToast("Authentication failed: " + error.message, "error");
-        setLoading(false); 
       }
-    };
-
-    initAuth();
-
-    return () => {
-      unsubscribe();
-    };
-  }, []);
-
-  // Data Listener
-  useEffect(() => {
-    if (!user || !isConfigured || authSetupError) return;
-
-    const path = storageMode === 'public'
-      ? `artifacts/${appId}/public/data/bookmarks`
-      : `artifacts/${appId}/users/${user.uid}/bookmarks`;
-
-    const collectionRef = collection(db, path);
-    const q = query(collectionRef);
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (!isMounted.current) return;
-      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bookmark));
-      docs.sort((a, b) => {
-          const tA = a.createdAt?.seconds || 0;
-          const tB = b.createdAt?.seconds || 0;
-          return tB - tA;
-      });
-      setBookmarks(docs);
-    }, (error) => {
-      console.error("Data error:", error);
-      if (error.code !== 'permission-denied') {
-        showToast("无法加载数据，请检查网络", "error");
+      
+      if (type === 'push' || type === 'both') {
+        const currentData = localDb.loadLocal(storageMode);
+        await localDb.syncToGitHub(ghConfig, currentData);
+        showToast("数据已成功保存至 GitHub");
       }
-    });
-
-    return () => unsubscribe();
-  }, [user, storageMode, authSetupError]);
-
-  const getCollectionRef = () => {
-    if (!user) throw new Error("Not authenticated");
-    const path = storageMode === 'public'
-      ? `artifacts/${appId}/public/data/bookmarks`
-      : `artifacts/${appId}/users/${user.uid}/bookmarks`;
-    return collection(db, path);
+    } catch (error: any) {
+      console.error(error);
+      showToast("GitHub 同步失败: " + error.message, "error");
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   // CRUD Operations
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title || !formData.url) return;
-    if (!user) return;
 
     try {
-      const collectionRef = getCollectionRef();
       let domain = 'unknown';
       try { domain = new URL(formData.url).hostname; } catch(err) {}
       
-      // Use DuckDuckGo favicon service instead of Google
       const favicon = `https://icons.duckduckgo.com/ip3/${domain}.ico`;
-      const payload: any = { ...formData, favicon, updatedAt: serverTimestamp() };
-
-      if (storageMode === 'public') {
-        payload.lastEditor = user.uid.slice(0,6);
-      }
+      const now = Date.now();
+      
+      let newBookmarks = [...bookmarks];
 
       if (editingId) {
-         await updateDoc(doc(collectionRef, editingId), payload);
-         showToast("书签已更新");
+        newBookmarks = newBookmarks.map(b => 
+          b.id === editingId 
+            ? { ...b, ...formData, favicon, updatedAt: now } 
+            : b
+        );
+        showToast("书签已更新");
       } else {
-         await addDoc(collectionRef, { ...payload, createdAt: serverTimestamp() });
-         showToast("新书签已添加");
+        const newBookmark: Bookmark = {
+          id: localDb.generateId(),
+          ...formData,
+          favicon,
+          createdAt: now,
+          updatedAt: now
+        };
+        newBookmarks = [newBookmark, ...newBookmarks];
+        showToast("新书签已添加");
       }
+
+      setBookmarks(newBookmarks);
+      localDb.saveLocal(storageMode, newBookmarks);
+      
+      // Auto-sync if configured
+      const ghConfig = localDb.loadGitHubConfig();
+      if (ghConfig && ghConfig.token) handleGitHubSync('push');
+      
       closeModal();
     } catch (error: any) {
-      console.error(error);
       showToast("保存失败: " + error.message, "error");
     }
   };
@@ -211,19 +141,20 @@ export default function App() {
     setShowConfirmModal({ visible: true, id: id });
   };
 
-  const confirmDelete = async () => {
+  const confirmDelete = () => {
     const id = showConfirmModal.id;
     setShowConfirmModal({ visible: false, id: null });
     if (!id) return;
 
-    try {
-       const collectionRef = getCollectionRef();
-       await deleteDoc(doc(collectionRef, id));
-       showToast("书签已删除");
-    } catch (error) {
-      console.error("Deletion failed:", error);
-      showToast("删除失败", "error");
-    }
+    const newBookmarks = bookmarks.filter(b => b.id !== id);
+    setBookmarks(newBookmarks);
+    localDb.saveLocal(storageMode, newBookmarks);
+    
+    // Auto-sync if configured
+    const ghConfig = localDb.loadGitHubConfig();
+    if (ghConfig && ghConfig.token) handleGitHubSync('push');
+    
+    showToast("书签已删除");
   };
 
   const handleEdit = (bookmark: Bookmark) => {
@@ -238,67 +169,62 @@ export default function App() {
   };
 
   // Import/Export
-  const processImportBatch = async (items: any[]) => {
-      let count = 0;
-      const CHUNK_SIZE = 400; 
-      const existingUrls = new Set(bookmarks.map(b => b.url));
-      const newItems = items.filter(i => !existingUrls.has(i.url) && i.url && i.url.startsWith('http'));
-
-      if (newItems.length === 0) {
-          showToast("没有发现新书签", "error");
-          return;
-      }
-
-      const collectionRef = getCollectionRef();
-      
-      for (let i = 0; i < newItems.length; i += CHUNK_SIZE) {
-          const chunk = newItems.slice(i, i + CHUNK_SIZE);
-          const batch = writeBatch(db);
-          
-          chunk.forEach(item => {
-              const docRef = doc(collectionRef); 
-              let domain = 'unknown';
-              try { domain = new URL(item.url).hostname; } catch(e) {}
-              
-              batch.set(docRef, {
-                  title: item.title,
-                  url: item.url,
-                  category: item.category || 'Imported',
-                  notes: item.notes || '',
-                  favicon: item.favicon || `https://icons.duckduckgo.com/ip3/${domain}.ico`,
-                  createdAt: serverTimestamp()
-              });
-          });
-          
-          await batch.commit();
-          count += chunk.length;
-      }
-      showToast(`成功导入 ${count} 个书签！`);
+  const handleExportJson = () => {
+    const dataStr = JSON.stringify(bookmarks, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `hajimi_${storageMode}_data.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast("导出成功");
   };
 
-  const handleImportHtml = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const processImport = (items: any[]) => {
+    const existingUrls = new Set(bookmarks.map(b => b.url));
+    const newItems = items
+      .filter(i => !existingUrls.has(i.url) && i.url && i.url.startsWith('http'))
+      .map(item => ({
+        id: localDb.generateId(),
+        title: item.title || 'Untitled',
+        url: item.url,
+        category: item.category || 'Imported',
+        notes: item.notes || '',
+        favicon: item.favicon || `https://icons.duckduckgo.com/ip3/${new URL(item.url).hostname}.ico`,
+        createdAt: Date.now()
+      }));
+
+    if (newItems.length === 0) {
+      showToast("没有发现新书签", "error");
+      return;
+    }
+
+    const updated = [...newItems, ...bookmarks];
+    setBookmarks(updated);
+    localDb.saveLocal(storageMode, updated);
+    
+    // Auto-sync if configured
+    const ghConfig = localDb.loadGitHubConfig();
+    if (ghConfig && ghConfig.token) handleGitHubSync('push');
+    
+    showToast(`成功导入 ${newItems.length} 个书签！`);
+  };
+
+  const handleImportHtml = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setIsImporting(true);
     const reader = new FileReader();
-    reader.onload = async (event) => {
+    reader.onload = (event) => {
       try {
         const result = event.target?.result as string;
         const parser = new DOMParser();
         const doc = parser.parseFromString(result, "text/html");
         const links = Array.from(doc.querySelectorAll('a'));
-        const parsed = links.map(link => {
-          let category = 'Imported';
-          try {
-             let parent = link.parentElement; 
-             while (parent && parent.tagName !== 'DL') parent = parent.parentElement;
-             if (parent && parent.previousElementSibling?.tagName === 'H3') {
-                category = parent.previousElementSibling.textContent || 'Imported';
-             }
-          } catch(err) {}
-          return { title: link.textContent || 'Untitled', url: link.href, category };
-        });
-        await processImportBatch(parsed);
+        const parsed = links.map(link => ({ title: link.textContent || '', url: link.href }));
+        processImport(parsed);
       } catch (error) {
         showToast("HTML 解析失败", "error");
       } finally {
@@ -309,28 +235,15 @@ export default function App() {
     reader.readAsText(file);
   };
 
-  const handleExportJson = () => {
-    const dataStr = JSON.stringify(bookmarks, null, 2);
-    const blob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `hajimi_${storageMode}_bookmarks.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   const handleImportJson = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if(!file) return;
       setIsImporting(true);
       const reader = new FileReader();
-      reader.onload = async(ev) => {
+      reader.onload = (ev) => {
           try {
-              const result = ev.target?.result as string;
-              const items = JSON.parse(result);
-              if(Array.isArray(items)) await processImportBatch(items);
+              const items = JSON.parse(ev.target?.result as string);
+              if(Array.isArray(items)) processImport(items);
           } catch(e) { showToast("JSON 格式错误", "error"); }
           finally { setIsImporting(false); e.target.value = ''; }
       }
@@ -352,65 +265,10 @@ export default function App() {
   const categories = ['all', ...Array.from(new Set(bookmarks.map(b => b.category || 'General')))];
   const themeColor = storageMode === 'public' ? 'purple' : 'blue';
 
-  if (!isConfigured) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen bg-slate-950 text-slate-300 p-6 text-center">
-         <div className="bg-slate-900 p-8 rounded-2xl border border-slate-800 max-w-md shadow-2xl animate-in fade-in slide-in-from-bottom-4">
-           <div className="w-16 h-16 bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Settings size={32} className="text-red-500"/>
-           </div>
-           <h1 className="text-2xl font-bold text-white mb-4">Configuration Required</h1>
-           <p className="mb-6 text-slate-400 text-sm">
-             Firebase connection settings are missing. Please configure your environment variables to continue.
-           </p>
-           <div className="bg-slate-950 p-4 rounded-lg text-left text-[10px] font-mono overflow-x-auto border border-slate-800 mb-6 whitespace-pre text-slate-500">
-              <div className="text-slate-400 font-bold mb-2">.env or Cloudflare Pages Variables</div>
-              VITE_FIREBASE_API_KEY=...{"\n"}
-              VITE_FIREBASE_AUTH_DOMAIN=...{"\n"}
-              VITE_FIREBASE_PROJECT_ID=...{"\n"}
-              VITE_FIREBASE_STORAGE_BUCKET=...{"\n"}
-              VITE_FIREBASE_MESSAGING_SENDER_ID=...{"\n"}
-              VITE_FIREBASE_APP_ID=...
-           </div>
-           <a href="https://console.firebase.google.com" target="_blank" rel="noreferrer" className="block w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">
-             Go to Firebase Console
-           </a>
-         </div>
-      </div>
-    );
-  }
-
-  if (authSetupError) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen bg-slate-950 text-slate-300 p-6 text-center">
-         <div className="bg-slate-900 p-8 rounded-2xl border border-slate-800 max-w-md shadow-2xl animate-in fade-in slide-in-from-bottom-4">
-           <div className="w-16 h-16 bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
-              <ShieldAlert size={32} className="text-amber-500"/>
-           </div>
-           <h1 className="text-2xl font-bold text-white mb-4">Authentication Setup Required</h1>
-           <p className="mb-6 text-slate-400 text-sm">
-             The app is connected to Firebase, but <b>Anonymous Authentication</b> is disabled.
-           </p>
-           <div className="text-left bg-slate-950 p-4 rounded-lg border border-slate-800 mb-6">
-             <ol className="list-decimal list-inside text-sm text-slate-400 space-y-2">
-               <li>Go to <a href="https://console.firebase.google.com" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">Firebase Console</a></li>
-               <li>Select your project and click <b>Build &gt; Authentication</b></li>
-               <li>Click the <b>Sign-in method</b> tab</li>
-               <li>Enable the <b>Anonymous</b> provider</li>
-             </ol>
-           </div>
-           <button onClick={() => window.location.reload()} className="block w-full py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors">
-             I've Enabled It, Reload App
-           </button>
-         </div>
-      </div>
-    );
-  }
-
   if (loading) return (
     <div className="flex h-screen bg-slate-950 items-center justify-center text-slate-500">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mr-3"></div>
-      Loading...
+      正在加载...
     </div>
   );
 
@@ -430,7 +288,7 @@ export default function App() {
           <div>
             <div className="font-bold text-lg tracking-wide leading-none">HAJIMI</div>
             <div className="text-[10px] text-slate-500 font-mono mt-1 uppercase">
-              {storageMode === 'public' ? 'Public Board' : 'Private Space'}
+               GitHub Sync Mode
             </div>
           </div>
         </div>
@@ -447,17 +305,17 @@ export default function App() {
                 onClick={() => setStorageMode('public')}
                 className={`flex-1 flex items-center justify-center py-2 rounded-md transition-all ${storageMode === 'public' ? 'bg-purple-600 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}
               >
-                <Users size={12} className="mr-1.5"/> 公开
+                <Users size={12} className="mr-1.5"/> 共享
               </button>
            </div>
         </div>
 
         <nav className="flex-1 overflow-y-auto px-2">
-          <div className="px-4 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider mt-2">Views</div>
+          <div className="px-4 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider mt-2">视图</div>
           <SidebarItem icon={<Layout size={18} />} label="所有书签" active={activeTab === 'all'} onClick={() => {setActiveTab('all'); setSidebarOpen(false);}} theme={themeColor} />
           <SidebarItem icon={<Database size={18} />} label="数据管理" active={activeTab === 'settings'} onClick={() => {setActiveTab('settings'); setSidebarOpen(false);}} theme={themeColor} />
           
-          <div className="px-4 mt-6 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Categories</div>
+          <div className="px-4 mt-6 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">分类</div>
           {categories.filter(c => c !== 'all').map(cat => (
             <button
               key={cat}
@@ -470,16 +328,19 @@ export default function App() {
           ))}
         </nav>
 
-        <div className="p-4 border-t border-slate-800 text-xs text-slate-600">
-           {storageMode === 'public' ? (
-             <div className="flex items-center text-purple-400 mb-2">
-               <Globe size={12} className="mr-1"/> 正在查看公共数据库
+        <div className="p-4 border-t border-slate-800 space-y-3">
+           {isSyncing ? (
+             <div className="flex items-center text-[10px] text-blue-400 animate-pulse">
+               <RefreshCw size={12} className="mr-1.5 animate-spin" /> 正在与 GitHub 同步...
              </div>
            ) : (
-             <div className="flex items-center text-blue-400 mb-2">
-               <Lock size={12} className="mr-1"/> 正在查看私有数据库
+             <div className="flex items-center text-[10px] text-slate-500">
+               <Github size={12} className="mr-1.5" /> 已连接 GitHub 存储
              </div>
            )}
+           <a href="https://github.com" target="_blank" rel="noreferrer" className="flex items-center text-[10px] text-slate-600 hover:text-slate-400">
+             <Github size={10} className="mr-1"/> 查看源代码
+           </a>
         </div>
       </aside>
 
@@ -495,7 +356,7 @@ export default function App() {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-4 h-4" />
               <input 
                 type="text" 
-                placeholder={storageMode === 'public' ? "搜索公共资源..." : "搜索我的书签..."}
+                placeholder="搜索书签..."
                 className="w-full bg-slate-800 border-none rounded-lg py-2 pl-10 pr-4 text-sm text-slate-200 focus:ring-2 focus:ring-blue-500 placeholder-slate-500"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -524,16 +385,18 @@ export default function App() {
                onExport={handleExportJson} 
                onImportJson={handleImportJson} 
                onImportHtml={handleImportHtml}
+               onGitHubSync={() => handleGitHubSync('both')}
                count={bookmarks.length}
                mode={storageMode}
                isImporting={isImporting}
+               isSyncing={isSyncing}
             />
           ) : (
             <>
               {filtered.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-64 text-slate-500">
                   <Search size={48} className="opacity-20 mb-4" />
-                  <p>此处空空如也 ({storageMode === 'public' ? '公共' : '私有'})</p>
+                  <p>没有找到书签</p>
                 </div>
               ) : ( 
                 <div className={viewMode === 'grid' ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" : "space-y-3"}>
@@ -569,7 +432,7 @@ export default function App() {
         <BrowserPreview 
           url={currentUrl} 
           onClose={() => setShowBrowser(false)}
-          onError={() => showToast("无法加载此链接，可能被安全策略阻止", "error")}
+          onError={() => showToast("无法预览此页面", "error")}
         />
       )}
       

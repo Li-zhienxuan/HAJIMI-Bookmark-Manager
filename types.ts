@@ -5,9 +5,17 @@ export interface Bookmark {
   category: string;
   notes?: string;
   favicon?: string;
-  createdAt?: { seconds: number; nanoseconds: number };
-  updatedAt?: { seconds: number; nanoseconds: number };
+  createdAt?: number; // Unix timestamp
+  updatedAt?: number;
   lastEditor?: string;
+}
+
+export interface GitHubConfig {
+  token: string;
+  owner: string;
+  repo: string;
+  branch: string;
+  path: string;
 }
 
 export interface ToastData {
@@ -24,13 +32,4 @@ export interface FormData {
   url: string;
   category: string;
   notes: string;
-}
-
-// Augment window for the specific custom token logic mentioned in the prompt
-declare global {
-  interface Window {
-    __firebase_config?: any;
-    __app_id?: string;
-    __initial_auth_token?: string;
-  }
 }

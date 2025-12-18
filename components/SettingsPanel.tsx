@@ -1,38 +1,128 @@
-import React from 'react';
-import { Settings, Globe, Download, FileJson, FileCode } from 'lucide-react';
-import { StorageMode } from '../types';
+import React, { useState, useEffect } from 'react';
+import { Settings, Download, FileJson, FileCode, Github, Save, RefreshCw } from 'lucide-react';
+import { StorageMode, GitHubConfig } from '../types';
+import { localDb } from '../services/storage';
 
 interface SettingsPanelProps {
   onExport: () => void;
   onImportJson: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onImportHtml: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onGitHubSync: () => Promise<void>;
   count: number;
   mode: StorageMode;
   isImporting: boolean;
+  isSyncing: boolean;
 }
 
-const SettingsPanel: React.FC<SettingsPanelProps> = ({ onExport, onImportJson, onImportHtml, count, mode, isImporting }) => {
-  return (
-    <div className="max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-4">
-      <h2 className="text-2xl font-bold mb-6 flex items-center">
-        <Settings className={`mr-3 ${mode === 'public' ? 'text-purple-500' : 'text-blue-500'}`} />
-        {mode === 'public' ? '公共数据库管理' : '私有数据库管理'}
-      </h2>
-      
-      {mode === 'public' && (
-         <div className="mb-6 p-4 bg-purple-900/20 border border-purple-500/30 rounded-lg text-sm text-purple-200 flex items-start">
-            <Globe className="w-5 h-5 mr-2 mt-0.5 flex-shrink-0"/>
-            <div>
-              <p className="font-bold mb-1">您正在操作公共区域</p>
-              <p className="opacity-80">此处导入或删除的数据将影响所有用户。请谨慎操作。</p>
-            </div>
-         </div>
-      )}
+const SettingsPanel: React.FC<SettingsPanelProps> = ({ 
+  onExport, onImportJson, onImportHtml, onGitHubSync, count, mode, isImporting, isSyncing 
+}) => {
+  const [ghConfig, setGhConfig] = useState<GitHubConfig>({
+    token: '', owner: '', repo: '', branch: 'main', path: 'bookmarks.json'
+  });
 
-      <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden mb-6">
+  useEffect(() => {
+    const saved = localDb.loadGitHubConfig();
+    if (saved) setGhConfig(saved);
+  }, []);
+
+  const handleSaveConfig = () => {
+    localDb.saveGitHubConfig(ghConfig);
+    alert('GitHub 配置已保存到本地浏览器');
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-4 space-y-6 pb-20">
+      <h2 className="text-2xl font-bold flex items-center">
+        <Settings className={`mr-3 ${mode === 'public' ? 'text-purple-500' : 'text-blue-500'}`} />
+        数据管理 ({mode === 'private' ? '私有' : '共享'})
+      </h2>
+
+      {/* GitHub Sync Section */}
+      <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl">
+        <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-medium text-white flex items-center">
+              <Github size={20} className="mr-2 text-slate-400" /> GitHub 云同步
+            </h3>
+            <p className="text-slate-500 text-xs mt-1">将您的书签作为 JSON 文件保存在 GitHub 仓库中</p>
+          </div>
+          <button 
+            onClick={onGitHubSync}
+            disabled={isSyncing || !ghConfig.token}
+            className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all ${isSyncing ? 'bg-slate-800 text-slate-500' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+          >
+            {isSyncing ? <RefreshCw size={16} className="mr-2 animate-spin" /> : <RefreshCw size={16} className="mr-2" />}
+            {isSyncing ? '同步中...' : '立即同步'}
+          </button>
+        </div>
+        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="col-span-1 md:col-span-2">
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Personal Access Token</label>
+            <input 
+              type="password" 
+              placeholder="ghp_xxxxxxxxxxxx"
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:ring-1 focus:ring-blue-500"
+              value={ghConfig.token}
+              onChange={e => setGhConfig({...ghConfig, token: e.target.value})}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Owner (用户名)</label>
+            <input 
+              type="text" 
+              placeholder="e.g. your-github-name"
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:ring-1 focus:ring-blue-500"
+              value={ghConfig.owner}
+              onChange={e => setGhConfig({...ghConfig, owner: e.target.value})}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Repository (仓库名)</label>
+            <input 
+              type="text" 
+              placeholder="e.g. hajimi-data"
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:ring-1 focus:ring-blue-500"
+              value={ghConfig.repo}
+              onChange={e => setGhConfig({...ghConfig, repo: e.target.value})}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Branch (分支)</label>
+            <input 
+              type="text" 
+              placeholder="main"
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:ring-1 focus:ring-blue-500"
+              value={ghConfig.branch}
+              onChange={e => setGhConfig({...ghConfig, branch: e.target.value})}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">File Path (存储路径)</label>
+            <input 
+              type="text" 
+              placeholder="bookmarks.json"
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:ring-1 focus:ring-blue-500"
+              value={ghConfig.path}
+              onChange={e => setGhConfig({...ghConfig, path: e.target.value})}
+            />
+          </div>
+          <div className="col-span-1 md:col-span-2 flex justify-end">
+            <button 
+              onClick={handleSaveConfig}
+              className="flex items-center px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-sm font-medium transition-colors"
+            >
+              <Save size={16} className="mr-2" /> 保存配置
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      {/* Export/Import Section */}
+      <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl">
          <div className="p-6 border-b border-slate-800">
-            <h3 className="text-lg font-medium text-white mb-1">数据导入/导出</h3>
-            <p className="text-slate-400 text-xs">当前操作对象: <span className="font-mono text-white bg-slate-800 px-1 rounded">{mode.toUpperCase()}</span></p>
+            <h3 className="text-lg font-medium text-white mb-1">手动导入/导出</h3>
+            <p className="text-slate-400 text-xs">本地离线备份</p>
          </div>
          <div className="p-4 space-y-3">
             <ActionRow 

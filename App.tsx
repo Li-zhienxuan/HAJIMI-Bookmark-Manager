@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Book, Globe, Plus, Search, Layout, 
   List as ListIcon, Grid as GridIcon, Menu, 
-  Database, Users, Lock, RefreshCw, Hash, Tag
+  Database, Users, Lock, RefreshCw, Hash, Tag, Sparkles
 } from 'lucide-react';
 
 import { localDb } from './services/storage';
@@ -39,7 +39,7 @@ export default function App() {
   const [showConfirmModal, setShowConfirmModal] = useState<{ visible: boolean, id: string | null }>({ visible: false, id: null });
   
   const [storageMode, setStorageMode] = useState<StorageMode>('private');
-  const [formData, setFormData] = useState<FormData>({ title: '', url: '', category: 'General', notes: '' });
+  const [formData, setFormData] = useState<FormData>({ title: '', url: '', category: '', notes: '' });
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const showToast = (msg: string, type: 'success' | 'error' = 'success') => setToast({ msg, type });
@@ -222,11 +222,10 @@ export default function App() {
 
   const closeModal = () => {
     setShowAddModal(false);
-    setFormData({ title: '', url: '', category: 'General', notes: '' });
+    setFormData({ title: '', url: '', category: '', notes: '' });
     setEditingId(null);
   };
 
-  // 分类计算与聚合
   const categoryStats = useMemo(() => {
     const stats: Record<string, number> = {};
     bookmarks.forEach(b => {
@@ -280,7 +279,7 @@ export default function App() {
           </div>
           <div>
             <div className="font-bold text-lg tracking-wide leading-none text-white">HAJIMI</div>
-            <div className="text-[10px] text-slate-500 font-mono mt-1 uppercase tracking-tighter">Local-First Storage</div>
+            <div className="text-[10px] text-slate-500 font-mono mt-1 uppercase tracking-tighter">AI-Powered Hub</div>
           </div>
         </div>
 
@@ -325,9 +324,6 @@ export default function App() {
                 count={categoryStats[cat]}
               />
             ))}
-            {categories.length === 0 && (
-              <p className="px-4 py-2 text-[10px] text-slate-600 italic">暂无分类数据</p>
-            )}
           </div>
         </nav>
 
@@ -376,9 +372,6 @@ export default function App() {
                      {selectedCategory === 'all' ? '所有书签' : selectedCategory}
                      <span className="ml-3 text-xs font-normal text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full">{filtered.length} 个结果</span>
                    </h1>
-                   {selectedCategory !== 'all' && (
-                     <button onClick={() => setSelectedCategory('all')} className="text-[10px] text-blue-500 hover:underline mt-1">清除过滤器</button>
-                   )}
                 </div>
               </div>
 

@@ -1,6 +1,7 @@
-import React from 'react';
-import { X, Globe, Tag } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Globe, Tag, Sparkles, Loader2 } from 'lucide-react';
 import { StorageMode, FormData } from '../types';
+import { aiService } from '../services/ai';
 
 interface AddBookmarkModalProps {
   isOpen: boolean;
@@ -16,33 +17,54 @@ interface AddBookmarkModalProps {
 const AddBookmarkModal: React.FC<AddBookmarkModalProps> = ({ 
   isOpen, onClose, onSave, formData, setFormData, isEditing, storageMode, existingCategories 
 }) => {
+  const [isAiLoading, setIsAiLoading] = useState(false);
+
   if (!isOpen) return null;
+
+  const handleAiSuggest = async () => {
+    if (!formData.url) return;
+    setIsAiLoading(true);
+    const suggestion = await aiService.suggestCategory(formData.url, formData.title, existingCategories);
+    if (suggestion) {
+      setFormData({
+        ...formData,
+        category: suggestion.category,
+        notes: suggestion.notes
+      });
+    }
+    setIsAiLoading(false);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-slate-900 rounded-2xl w-full max-w-lg shadow-2xl border border-slate-800 transform transition-all scale-100 flex flex-col max-h-[90vh]">
         <div className="p-6 border-b border-slate-800 flex justify-between items-center">
-          <h3 className="text-xl font-bold text-white">
-            {isEditing ? '编辑' : '新建'} {storageMode === 'public' ? '公共书签' : '私有书签'}
-          </h3>
+          <div className="flex items-center space-x-2">
+            <h3 className="text-xl font-bold text-white">
+              {isEditing ? '编辑' : '新建'} {storageMode === 'public' ? '公共书签' : '私有书签'}
+            </h3>
+            {!isEditing && (
+              <button 
+                type="button"
+                onClick={handleAiSuggest}
+                disabled={isAiLoading || !formData.url}
+                className={`ml-2 flex items-center px-2 py-1 rounded-md text-[10px] font-bold transition-all ${
+                  !formData.url 
+                  ? 'bg-slate-800 text-slate-600 cursor-not-allowed' 
+                  : 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:shadow-lg hover:shadow-blue-500/20 active:scale-95'
+                }`}
+              >
+                {isAiLoading ? <Loader2 size={12} className="mr-1 animate-spin" /> : <Sparkles size={12} className="mr-1" />}
+                AI 智能识别
+              </button>
+            )}
+          </div>
           <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-full transition-colors">
             <X size={20} className="text-slate-400 hover:text-white"/>
           </button>
         </div>
         
         <form onSubmit={onSave} className="p-6 space-y-5 overflow-y-auto">
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">标题</label>
-            <input 
-              required 
-              type="text" 
-              placeholder="例如: GitHub 首页" 
-              value={formData.title} 
-              onChange={e => setFormData({...formData, title: e.target.value})} 
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none placeholder-slate-600 transition-all"
-            />
-          </div>
-
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">网址 (URL)</label>
             <div className="relative">
@@ -59,7 +81,22 @@ const AddBookmarkModal: React.FC<AddBookmarkModalProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">分类</label>
+            <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">标题</label>
+            <input 
+              required 
+              type="text" 
+              placeholder="网站名称" 
+              value={formData.title} 
+              onChange={e => setFormData({...formData, title: e.target.value})} 
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none placeholder-slate-600 transition-all"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-slate-500 uppercase ml-1 flex justify-between">
+              分类
+              {isAiLoading && <span className="text-blue-500 animate-pulse lowercase font-normal italic">AI 正在学习分类习惯...</span>}
+            </label>
             <div className="relative">
               <Tag className="absolute left-4 top-3.5 text-slate-600 w-4 h-4" />
               <input 
@@ -73,12 +110,16 @@ const AddBookmarkModal: React.FC<AddBookmarkModalProps> = ({
             {existingCategories.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-2 px-1">
                 <span className="text-[10px] text-slate-600 self-center mr-1">推荐:</span>
-                {existingCategories.slice(0, 8).map(cat => (
+                {existingCategories.slice(0, 6).map(cat => (
                   <button
                     key={cat}
                     type="button"
                     onClick={() => setFormData({...formData, category: cat})}
-                    className="text-[10px] px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-md transition-colors border border-slate-700"
+                    className={`text-[10px] px-2 py-1 rounded-md transition-colors border ${
+                      formData.category === cat 
+                      ? 'bg-blue-600/20 border-blue-500 text-blue-400' 
+                      : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
+                    }`}
                   >
                     {cat}
                   </button>
@@ -88,7 +129,7 @@ const AddBookmarkModal: React.FC<AddBookmarkModalProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">备注 (可选)</label>
+            <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">备注</label>
             <textarea 
               placeholder="添加一些描述信息..." 
               value={formData.notes} 

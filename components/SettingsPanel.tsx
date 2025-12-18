@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Download, FileJson, FileCode, Save, RefreshCw, HelpCircle, ExternalLink, Info } from 'lucide-react';
+import { Settings, Download, FileJson, FileCode, Save, RefreshCw, HelpCircle, ExternalLink, Info, FlaskConical, Trash2, UserCheck } from 'lucide-react';
 import { StorageMode, SyncConfig, ProviderType } from '../types';
 import { localDb } from '../services/storage';
 
@@ -12,10 +12,14 @@ interface SettingsPanelProps {
   mode: StorageMode;
   isImporting: boolean;
   isSyncing: boolean;
+  isTestMode: boolean;
+  setIsTestMode: (val: boolean) => void;
+  onClearDatabase: () => void;
 }
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({ 
-  onExport, onImportJson, onImportHtml, onSync, count, mode, isImporting, isSyncing 
+  onExport, onImportJson, onImportHtml, onSync, count, mode, isImporting, isSyncing,
+  isTestMode, setIsTestMode, onClearDatabase
 }) => {
   const [config, setConfig] = useState<SyncConfig>({
     provider: 'cnb', token: '', owner: '', repo: '', branch: 'main', path: 'bookmarks.json'
@@ -32,22 +36,72 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     alert('配置已保存在本地');
   };
 
+  const fillTestAccount = () => {
+    const testConfig: SyncConfig = {
+      provider: 'github',
+      token: 'test_token_not_real',
+      owner: 'hajimi-test-org',
+      repo: 'public-bookmarks',
+      branch: 'main',
+      path: 'test-database.json'
+    };
+    setConfig(testConfig);
+    localDb.saveSyncConfig(testConfig);
+    alert('已填充测试账号信息（示例配置）');
+  };
+
   const isConfigValid = config.token && config.owner && config.repo;
 
   return (
     <div className="max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-4 space-y-6 pb-24">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold flex items-center">
+        <h2 className="text-2xl font-bold flex items-center text-white">
           <Settings className={`mr-3 ${mode === 'public' ? 'text-purple-500' : 'text-blue-500'}`} />
           同步与设置
         </h2>
-        <button 
-          onClick={() => setShowGuide(!showGuide)}
-          className="text-xs flex items-center text-slate-400 hover:text-white transition-colors"
-        >
-          <HelpCircle size={14} className="mr-1"/> 引导说明
-        </button>
+        <div className="flex items-center space-x-4">
+           <button 
+             onClick={() => setIsTestMode(!isTestMode)}
+             className={`text-[10px] px-2 py-1 rounded border flex items-center transition-all ${isTestMode ? 'bg-orange-500/20 border-orange-500 text-orange-400 font-bold' : 'bg-slate-800 border-slate-700 text-slate-500'}`}
+           >
+             <FlaskConical size={10} className="mr-1"/> {isTestMode ? '测试模式 ON' : '测试模式 OFF'}
+           </button>
+           <button 
+            onClick={() => setShowGuide(!showGuide)}
+            className="text-xs flex items-center text-slate-400 hover:text-white transition-colors"
+          >
+            <HelpCircle size={14} className="mr-1"/> 引导说明
+          </button>
+        </div>
       </div>
+
+      {isTestMode && (
+        <div className="bg-orange-900/20 border border-orange-500/30 rounded-xl p-5 space-y-4 animate-in zoom-in-95">
+           <div className="flex items-center justify-between">
+              <h4 className="font-bold text-orange-400 flex items-center text-sm"><FlaskConical size={16} className="mr-2"/> 测试账号与调试工具</h4>
+              <span className="text-[10px] text-orange-500 uppercase font-mono">Development Mode</span>
+           </div>
+           <p className="text-xs text-slate-400">在此模式下，您可以快速填充测试账号进行同步模拟，或一键重置本地数据库以便重新测试。<strong>警告：清空操作不可逆！</strong></p>
+           <div className="flex space-x-3">
+              <button 
+                onClick={fillTestAccount}
+                className="flex-1 flex items-center justify-center py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold border border-slate-700 transition-all active:scale-95"
+              >
+                <UserCheck size={14} className="mr-2 text-blue-400" /> 填充测试账号
+              </button>
+              <button 
+                onClick={() => {
+                   if(confirm('确定要清空当前所有本地书签吗？同步到云端的书签不会受影响。')) {
+                      onClearDatabase();
+                   }
+                }}
+                className="flex-1 flex items-center justify-center py-2 bg-red-900/20 hover:bg-red-900/40 text-red-400 rounded-lg text-xs font-bold border border-red-500/30 transition-all active:scale-95"
+              >
+                <Trash2 size={14} className="mr-2" /> 一键清空数据库
+              </button>
+           </div>
+        </div>
+      )}
 
       {showGuide && (
         <div className="bg-blue-900/20 border border-blue-500/30 rounded-xl p-5 text-sm text-slate-300 space-y-3 animate-in zoom-in-95">

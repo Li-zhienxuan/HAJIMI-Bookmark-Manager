@@ -42,7 +42,14 @@ export default function App() {
   const [formData, setFormData] = useState<FormData>({ title: '', url: '', category: '', notes: '' });
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  // 测试模式相关状态
+  const [isTestMode, setIsTestMode] = useState(() => localStorage.getItem('hajimi_test_mode') === 'true');
+
   const showToast = (msg: string, type: 'success' | 'error' = 'success') => setToast({ msg, type });
+
+  useEffect(() => {
+    localStorage.setItem('hajimi_test_mode', String(isTestMode));
+  }, [isTestMode]);
 
   useEffect(() => {
     const data = localDb.loadLocal(storageMode);
@@ -54,6 +61,12 @@ export default function App() {
       handleCloudSync('pull');
     }
   }, [storageMode]);
+
+  const handleClearDatabase = () => {
+    localDb.saveLocal(storageMode, []);
+    setBookmarks([]);
+    showToast(`${storageMode === 'public' ? '公共' : '私有'}数据库已清空`, "success");
+  };
 
   const handleCloudSync = async (type: 'pull' | 'push' | 'both' = 'both') => {
     const config = localDb.loadSyncConfig();
@@ -363,7 +376,19 @@ export default function App() {
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
           {activeTab === 'settings' ? (
-            <SettingsPanel onExport={handleExportJson} onImportJson={handleImportJson} onImportHtml={handleImportHtml} onSync={() => handleCloudSync('both')} count={bookmarks.length} mode={storageMode} isImporting={isImporting} isSyncing={isSyncing}/>
+            <SettingsPanel 
+              onExport={handleExportJson} 
+              onImportJson={handleImportJson} 
+              onImportHtml={handleImportHtml} 
+              onSync={() => handleCloudSync('both')} 
+              count={bookmarks.length} 
+              mode={storageMode} 
+              isImporting={isImporting} 
+              isSyncing={isSyncing}
+              isTestMode={isTestMode}
+              setIsTestMode={setIsTestMode}
+              onClearDatabase={handleClearDatabase}
+            />
           ) : (
             <div className="animate-in fade-in duration-500">
               <div className="mb-6 flex items-center justify-between">

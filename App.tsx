@@ -38,7 +38,7 @@ export default function App() {
   const [toast, setToast] = useState<ToastData | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState<{ visible: boolean, id: string | null }>({ visible: false, id: null });
   
-  // STORAGE MODE: Local Storage separates 'private' and 'public' by keys
+  // STORAGE MODE: 'private' or 'public'
   const [storageMode, setStorageMode] = useState<StorageMode>('private');
 
   // Form State
@@ -71,21 +71,21 @@ export default function App() {
     try {
       if (type === 'pull' || type === 'both') {
         const remoteData = await localDb.fetchFromGitHub(ghConfig);
-        if (remoteData.length > 0) {
+        if (remoteData && Array.isArray(remoteData)) {
           setBookmarks(remoteData);
           localDb.saveLocal(storageMode, remoteData);
-          if (type === 'pull') showToast("已从 GitHub 同步最新数据");
+          if (type === 'pull') showToast("已同步 GitHub 最新数据");
         }
       }
       
       if (type === 'push' || type === 'both') {
         const currentData = localDb.loadLocal(storageMode);
         await localDb.syncToGitHub(ghConfig, currentData);
-        showToast("数据已成功保存至 GitHub");
+        showToast("已成功备份至 GitHub");
       }
     } catch (error: any) {
       console.error(error);
-      showToast("GitHub 同步失败: " + error.message, "error");
+      showToast("GitHub 同步失败，请检查网络或 Token", "error");
     } finally {
       setIsSyncing(false);
     }
@@ -100,7 +100,8 @@ export default function App() {
       let domain = 'unknown';
       try { domain = new URL(formData.url).hostname; } catch(err) {}
       
-      const favicon = `https://icons.duckduckgo.com/ip3/${domain}.ico`;
+      // 使用国内访问更稳定的 favicon 服务
+      const favicon = `https://api.iowen.cn/favicon/${domain}.png`;
       const now = Date.now();
       
       let newBookmarks = [...bookmarks];
@@ -133,7 +134,7 @@ export default function App() {
       
       closeModal();
     } catch (error: any) {
-      showToast("保存失败: " + error.message, "error");
+      showToast("保存失败", "error");
     }
   };
 
@@ -150,7 +151,6 @@ export default function App() {
     setBookmarks(newBookmarks);
     localDb.saveLocal(storageMode, newBookmarks);
     
-    // Auto-sync if configured
     const ghConfig = localDb.loadGitHubConfig();
     if (ghConfig && ghConfig.token) handleGitHubSync('push');
     
@@ -168,18 +168,17 @@ export default function App() {
     setShowAddModal(true);
   };
 
-  // Import/Export
   const handleExportJson = () => {
     const dataStr = JSON.stringify(bookmarks, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `hajimi_${storageMode}_data.json`;
+    link.download = `hajimi_data.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showToast("导出成功");
+    showToast("本地导出成功");
   };
 
   const processImport = (items: any[]) => {
@@ -192,12 +191,12 @@ export default function App() {
         url: item.url,
         category: item.category || 'Imported',
         notes: item.notes || '',
-        favicon: item.favicon || `https://icons.duckduckgo.com/ip3/${new URL(item.url).hostname}.ico`,
+        favicon: `https://api.iowen.cn/favicon/${new URL(item.url).hostname}.png`,
         createdAt: Date.now()
       }));
 
     if (newItems.length === 0) {
-      showToast("没有发现新书签", "error");
+      showToast("未发现新书签", "error");
       return;
     }
 
@@ -205,7 +204,6 @@ export default function App() {
     setBookmarks(updated);
     localDb.saveLocal(storageMode, updated);
     
-    // Auto-sync if configured
     const ghConfig = localDb.loadGitHubConfig();
     if (ghConfig && ghConfig.token) handleGitHubSync('push');
     
@@ -268,7 +266,7 @@ export default function App() {
   if (loading) return (
     <div className="flex h-screen bg-slate-950 items-center justify-center text-slate-500">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mr-3"></div>
-      正在加载...
+      加载中...
     </div>
   );
 
@@ -276,7 +274,6 @@ export default function App() {
     <div className="flex h-screen bg-slate-950 text-slate-200 font-sans overflow-hidden">
       {toast && <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
 
-      {/* Sidebar */}
       <aside className={`
         fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 border-r border-slate-800 transition-transform duration-300
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 flex flex-col
@@ -286,10 +283,8 @@ export default function App() {
             {storageMode === 'public' ? <Globe className="w-5 h-5 text-white"/> : <Book className="w-5 h-5 text-white" />}
           </div>
           <div>
-            <div className="font-bold text-lg tracking-wide leading-none">HAJIMI</div>
-            <div className="text-[10px] text-slate-500 font-mono mt-1 uppercase">
-               GitHub Sync Mode
-            </div>
+            <div className="font-bold text-lg tracking-wide leading-none text-white">HAJIMI</div>
+            <div className="text-[10px] text-slate-500 font-mono mt-1 uppercase">GitHub Storage</div>
           </div>
         </div>
 
@@ -297,13 +292,13 @@ export default function App() {
            <div className="bg-slate-950/50 p-1 rounded-lg flex text-xs font-medium border border-slate-800">
               <button 
                 onClick={() => setStorageMode('private')}
-                className={`flex-1 flex items-center justify-center py-2 rounded-md transition-all ${storageMode === 'private' ? 'bg-blue-600 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}
+                className={`flex-1 flex items-center justify-center py-2 rounded-md transition-all ${storageMode === 'private' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}
               >
                 <Lock size={12} className="mr-1.5"/> 私有
               </button>
               <button 
                 onClick={() => setStorageMode('public')}
-                className={`flex-1 flex items-center justify-center py-2 rounded-md transition-all ${storageMode === 'public' ? 'bg-purple-600 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}
+                className={`flex-1 flex items-center justify-center py-2 rounded-md transition-all ${storageMode === 'public' ? 'bg-purple-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}
               >
                 <Users size={12} className="mr-1.5"/> 共享
               </button>
@@ -311,7 +306,6 @@ export default function App() {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-2">
-          <div className="px-4 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider mt-2">视图</div>
           <SidebarItem icon={<Layout size={18} />} label="所有书签" active={activeTab === 'all'} onClick={() => {setActiveTab('all'); setSidebarOpen(false);}} theme={themeColor} />
           <SidebarItem icon={<Database size={18} />} label="数据管理" active={activeTab === 'settings'} onClick={() => {setActiveTab('settings'); setSidebarOpen(false);}} theme={themeColor} />
           
@@ -331,23 +325,18 @@ export default function App() {
         <div className="p-4 border-t border-slate-800 space-y-3">
            {isSyncing ? (
              <div className="flex items-center text-[10px] text-blue-400 animate-pulse">
-               <RefreshCw size={12} className="mr-1.5 animate-spin" /> 正在与 GitHub 同步...
+               <RefreshCw size={12} className="mr-1.5 animate-spin" /> 同步中...
              </div>
            ) : (
              <div className="flex items-center text-[10px] text-slate-500">
-               <Github size={12} className="mr-1.5" /> 已连接 GitHub 存储
+               <Github size={12} className="mr-1.5" /> 已连通 GitHub
              </div>
            )}
-           <a href="https://github.com" target="_blank" rel="noreferrer" className="flex items-center text-[10px] text-slate-600 hover:text-slate-400">
-             <Github size={10} className="mr-1"/> 查看源代码
-           </a>
         </div>
       </aside>
 
-      {/* Main */}
-      <main className="flex-1 flex flex-col min-w-0 bg-slate-950 relative">
-        {/* Header */}
-        <header className="h-16 border-b border-slate-800 bg-slate-900/50 backdrop-blur flex items-center justify-between px-4 md:px-8 sticky top-0 z-20">
+      <main className="flex-1 flex flex-col min-w-0 bg-slate-950">
+        <header className="h-16 border-b border-slate-800 bg-slate-900/50 backdrop-blur flex items-center justify-between px-4 md:px-8">
           <div className="flex items-center flex-1 mr-4">
             <button onClick={() => setSidebarOpen(!sidebarOpen)} className="mr-4 md:hidden p-2 text-slate-400">
               <Menu size={20} />
@@ -356,8 +345,8 @@ export default function App() {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-4 h-4" />
               <input 
                 type="text" 
-                placeholder="搜索书签..."
-                className="w-full bg-slate-800 border-none rounded-lg py-2 pl-10 pr-4 text-sm text-slate-200 focus:ring-2 focus:ring-blue-500 placeholder-slate-500"
+                placeholder="搜索您的书签..."
+                className="w-full bg-slate-800 border-none rounded-lg py-2 pl-10 pr-4 text-sm text-slate-200 focus:ring-1 focus:ring-blue-500"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -371,14 +360,13 @@ export default function App() {
              </div>
              <button 
                onClick={() => setShowAddModal(true)}
-               className={`${storageMode === 'public' ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-600/20' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'} text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center transition-colors shadow-lg`}
+               className={`${storageMode === 'public' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'} text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center transition-colors`}
              >
                <Plus size={16} className="mr-1.5" /> 新建
              </button>
           </div>
         </header>
 
-        {/* Content */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8">
           {activeTab === 'settings' ? (
             <SettingsPanel 
@@ -394,9 +382,8 @@ export default function App() {
           ) : (
             <>
               {filtered.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-64 text-slate-500">
-                  <Search size={48} className="opacity-20 mb-4" />
-                  <p>没有找到书签</p>
+                <div className="flex flex-col items-center justify-center h-64 text-slate-600">
+                  <p className="text-sm">暂无数据，请尝试同步或手动添加</p>
                 </div>
               ) : ( 
                 <div className={viewMode === 'grid' ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" : "space-y-3"}>
@@ -432,7 +419,7 @@ export default function App() {
         <BrowserPreview 
           url={currentUrl} 
           onClose={() => setShowBrowser(false)}
-          onError={() => showToast("无法预览此页面", "error")}
+          onError={() => showToast("预览受限，请尝试外部打开", "error")}
         />
       )}
       

@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Book, Globe, Plus, Search, Layout, 
   List as ListIcon, Grid as GridIcon, Menu, 
-  Database, Users, Lock, RefreshCw, Github
+  Database, Users, Lock, RefreshCw, Hash, Tag
 } from 'lucide-react';
 
 import { localDb } from './services/storage';
@@ -16,7 +16,7 @@ import AddBookmarkModal from './components/AddBookmarkModal';
 import BrowserPreview from './components/BrowserPreview';
 import ConfirmModal from './components/ConfirmModal';
 import SidebarItem from './components/SidebarItem';
-import WelcomeModal from './components/WelcomeModal'; // 新增
+import WelcomeModal from './components/WelcomeModal';
 
 export default function App() {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
@@ -25,11 +25,12 @@ export default function App() {
   
   const [viewMode, setViewMode] = useState<ViewMode>('grid'); 
   const [activeTab, setActiveTab] = useState<ActiveTab>('all'); 
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showWelcomeModal, setShowWelcomeModal] = useState(true); // 默认开启欢迎引导
+  const [showWelcomeModal, setShowWelcomeModal] = useState(true);
   const [showBrowser, setShowBrowser] = useState(false);
   const [currentUrl, setCurrentUrl] = useState('');
   
@@ -48,7 +49,6 @@ export default function App() {
     setBookmarks(data);
     setLoading(false);
     
-    // 自动拉取云端
     const syncConfig = localDb.loadSyncConfig();
     if (syncConfig && syncConfig.token) {
       handleCloudSync('pull');
@@ -96,12 +96,14 @@ export default function App() {
       const favicon = `https://api.iowen.cn/favicon/${domain}.png`;
       const now = Date.now();
       
+      const cleanCategory = formData.category.trim() || '未分类';
+      
       let newBookmarks = [...bookmarks];
       if (editingId) {
-        newBookmarks = newBookmarks.map(b => b.id === editingId ? { ...b, ...formData, favicon, updatedAt: now } : b);
+        newBookmarks = newBookmarks.map(b => b.id === editingId ? { ...b, ...formData, category: cleanCategory, favicon, updatedAt: now } : b);
         showToast("书签已更新");
       } else {
-        const newBookmark: Bookmark = { id: localDb.generateId(), ...formData, favicon, createdAt: now, updatedAt: now };
+        const newBookmark: Bookmark = { id: localDb.generateId(), ...formData, category: cleanCategory, favicon, createdAt: now, updatedAt: now };
         newBookmarks = [newBookmark, ...newBookmarks];
         showToast("新书签已添加");
       }
@@ -134,7 +136,7 @@ export default function App() {
   };
 
   const handleEdit = (bookmark: Bookmark) => {
-    setFormData({ title: bookmark.title, url: bookmark.url, category: bookmark.category || 'General', notes: bookmark.notes || '' });
+    setFormData({ title: bookmark.title, url: bookmark.url, category: bookmark.category || '未分类', notes: bookmark.notes || '' });
     setEditingId(bookmark.id);
     setShowAddModal(true);
   };
@@ -160,7 +162,7 @@ export default function App() {
         id: localDb.generateId(),
         title: item.title || 'Untitled',
         url: item.url,
-        category: item.category || 'Imported',
+        category: item.category || '未分类',
         notes: item.notes || '',
         favicon: `https://api.iowen.cn/favicon/${new URL(item.url).hostname}.png`,
         createdAt: Date.now()
@@ -224,17 +226,39 @@ export default function App() {
     setEditingId(null);
   };
 
-  const filtered = bookmarks.filter(b => 
-    b.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    b.url.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (b.notes && b.notes.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  // 分类计算与聚合
+  const categoryStats = useMemo(() => {
+    const stats: Record<string, number> = {};
+    bookmarks.forEach(b => {
+      const cat = b.category || '未分类';
+      stats[cat] = (stats[cat] || 0) + 1;
+    });
+    return stats;
+  }, [bookmarks]);
+
+  const categories = useMemo(() => {
+    return Object.keys(categoryStats).sort();
+  }, [categoryStats]);
+
+  const filtered = useMemo(() => {
+    return bookmarks.filter(b => {
+      const matchesSearch = 
+        b.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        b.url.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (b.notes && b.notes.toLowerCase().includes(searchTerm.toLowerCase()));
+      
+      const matchesCategory = 
+        selectedCategory === 'all' || 
+        (b.category || '未分类') === selectedCategory;
+
+      return matchesSearch && matchesCategory;
+    });
+  }, [bookmarks, searchTerm, selectedCategory]);
   
-  const categories = ['all', ...Array.from(new Set(bookmarks.map(b => b.category || 'General')))];
   const themeColor = storageMode === 'public' ? 'purple' : 'blue';
 
   if (loading) return (
-    <div className="flex h-screen bg-slate-950 items-center justify-center text-slate-500">
+    <div className="flex h-screen bg-slate-950 items-center justify-center text-slate-500 font-sans">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mr-3"></div>
       Loading...
     </div>
@@ -251,71 +275,120 @@ export default function App() {
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 flex flex-col
       `}>
         <div className="p-6 border-b border-slate-800 flex items-center space-x-3">
-          <div className={`p-2 rounded-lg ${storageMode === 'public' ? 'bg-purple-600' : 'bg-blue-600'}`}>
+          <div className={`p-2 rounded-lg ${storageMode === 'public' ? 'bg-purple-600 shadow-lg shadow-purple-500/20' : 'bg-blue-600 shadow-lg shadow-blue-500/20'}`}>
             <Book className="w-5 h-5 text-white" />
           </div>
           <div>
             <div className="font-bold text-lg tracking-wide leading-none text-white">HAJIMI</div>
-            <div className="text-[10px] text-slate-500 font-mono mt-1 uppercase">Cloud Storage</div>
+            <div className="text-[10px] text-slate-500 font-mono mt-1 uppercase tracking-tighter">Local-First Storage</div>
           </div>
         </div>
 
         <div className="px-4 py-4">
-           <div className="bg-slate-950/50 p-1 rounded-lg flex text-xs font-medium border border-slate-800">
-              <button onClick={() => setStorageMode('private')} className={`flex-1 flex items-center justify-center py-2 rounded-md transition-all ${storageMode === 'private' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}><Lock size={12} className="mr-1.5"/> 私有</button>
-              <button onClick={() => setStorageMode('public')} className={`flex-1 flex items-center justify-center py-2 rounded-md transition-all ${storageMode === 'public' ? 'bg-purple-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}><Users size={12} className="mr-1.5"/> 共享</button>
+           <div className="bg-slate-950/50 p-1 rounded-xl flex text-xs font-medium border border-slate-800">
+              <button onClick={() => setStorageMode('private')} className={`flex-1 flex items-center justify-center py-2 rounded-lg transition-all ${storageMode === 'private' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}><Lock size={12} className="mr-1.5"/> 私有</button>
+              <button onClick={() => setStorageMode('public')} className={`flex-1 flex items-center justify-center py-2 rounded-lg transition-all ${storageMode === 'public' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}><Users size={12} className="mr-1.5"/> 共享</button>
            </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-2">
-          <SidebarItem icon={<Layout size={18} />} label="所有书签" active={activeTab === 'all'} onClick={() => {setActiveTab('all'); setSidebarOpen(false);}} theme={themeColor} />
-          <SidebarItem icon={<Database size={18} />} label="同步与设置" active={activeTab === 'settings'} onClick={() => {setActiveTab('settings'); setSidebarOpen(false);}} theme={themeColor} />
-          <div className="px-4 mt-6 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">分类</div>
-          {categories.filter(c => c !== 'all').map(cat => (
-            <button key={cat} onClick={() => {setSearchTerm(cat); setActiveTab('all'); setSidebarOpen(false);}} className="w-full flex items-center px-4 py-2 text-sm text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors text-left truncate mb-1">
-              <span className={`w-2 h-2 rounded-full mr-3 ${storageMode === 'public' ? 'bg-purple-500' : 'bg-blue-500'}`}></span>
-              {cat}
-            </button>
-          ))}
+        <nav className="flex-1 overflow-y-auto px-2 custom-scrollbar">
+          <SidebarItem 
+            icon={<Layout size={18} />} 
+            label="所有书签" 
+            active={activeTab === 'all' && selectedCategory === 'all'} 
+            onClick={() => {setActiveTab('all'); setSelectedCategory('all'); setSidebarOpen(false);}} 
+            theme={themeColor}
+            count={bookmarks.length}
+          />
+          <SidebarItem 
+            icon={<Database size={18} />} 
+            label="同步与设置" 
+            active={activeTab === 'settings'} 
+            onClick={() => {setActiveTab('settings'); setSidebarOpen(false);}} 
+            theme={themeColor} 
+          />
+          
+          <div className="px-4 mt-6 mb-2 flex items-center justify-between">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">书签分类</span>
+            <Tag size={10} className="text-slate-600" />
+          </div>
+
+          <div className="space-y-0.5">
+            {categories.map(cat => (
+              <SidebarItem 
+                key={cat}
+                icon={<Hash size={16} />} 
+                label={cat} 
+                active={activeTab === 'all' && selectedCategory === cat} 
+                onClick={() => {setActiveTab('all'); setSelectedCategory(cat); setSidebarOpen(false);}} 
+                theme={themeColor}
+                count={categoryStats[cat]}
+              />
+            ))}
+            {categories.length === 0 && (
+              <p className="px-4 py-2 text-[10px] text-slate-600 italic">暂无分类数据</p>
+            )}
+          </div>
         </nav>
 
-        <div className="p-4 border-t border-slate-800">
-           <div className="flex items-center text-[10px] text-slate-500">
-             <RefreshCw size={10} className={`mr-1.5 ${isSyncing ? 'animate-spin text-blue-400' : ''}`} />
-             {isSyncing ? '正在同步云端...' : (localDb.loadSyncConfig()?.token ? '云同步已就绪' : '本地模式 (未连接)')}
+        <div className="p-4 border-t border-slate-800 bg-slate-900/80">
+           <div className="flex items-center text-[10px] text-slate-500 font-medium">
+             <RefreshCw size={10} className={`mr-2 ${isSyncing ? 'animate-spin text-blue-400' : ''}`} />
+             {isSyncing ? '正在与云端同步...' : (localDb.loadSyncConfig()?.token ? '云端已连接' : '仅本地模式')}
            </div>
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0 bg-slate-950">
-        <header className="h-16 border-b border-slate-800 bg-slate-900/50 backdrop-blur flex items-center justify-between px-4 md:px-8">
+      <main className="flex-1 flex flex-col min-w-0 bg-slate-950 relative">
+        <header className="h-16 border-b border-slate-800 bg-slate-900/50 backdrop-blur-md flex items-center justify-between px-4 md:px-8 z-10">
           <div className="flex items-center flex-1 mr-4">
-            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="mr-4 md:hidden p-2 text-slate-400"><Menu size={20} /></button>
-            <div className="relative w-full max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-4 h-4" />
-              <input type="text" placeholder="搜索书签..." className="w-full bg-slate-800 border-none rounded-lg py-2 pl-10 pr-4 text-sm text-slate-200 focus:ring-1 focus:ring-blue-500" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="mr-4 md:hidden p-2 text-slate-400 hover:text-white transition-colors"><Menu size={20} /></button>
+            <div className="relative w-full max-w-md group">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 group-focus-within:text-blue-500 transition-colors w-4 h-4" />
+              <input 
+                type="text" 
+                placeholder={`在 ${selectedCategory === 'all' ? '所有' : selectedCategory} 中搜索...`} 
+                className="w-full bg-slate-800/50 border border-slate-700/50 rounded-xl py-2 pl-10 pr-4 text-sm text-slate-200 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all" 
+                value={searchTerm} 
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
             </div>
           </div>
           <div className="flex items-center space-x-3">
-             <div className="hidden md:flex bg-slate-800 rounded-lg p-1">
-               <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded ${viewMode === 'grid' ? 'bg-slate-700 text-white' : 'text-slate-400'}`}><GridIcon size={16} /></button>
-               <button onClick={() => setViewMode('list')} className={`p-1.5 rounded ${viewMode === 'list' ? 'bg-slate-700 text-white' : 'text-slate-400'}`}><ListIcon size={16} /></button>
+             <div className="hidden md:flex bg-slate-800/50 rounded-xl p-1 border border-slate-700/50">
+               <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}><GridIcon size={16} /></button>
+               <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-lg transition-all ${viewMode === 'list' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}><ListIcon size={16} /></button>
              </div>
-             <button onClick={() => setShowAddModal(true)} className={`${storageMode === 'public' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'} text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center transition-colors shadow-lg shadow-blue-500/10`}>
-               <Plus size={16} className="mr-1.5" /> 新建
+             <button onClick={() => setShowAddModal(true)} className={`${storageMode === 'public' ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-500/20' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'} text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center transition-all active:scale-95 shadow-lg`}>
+               <Plus size={18} className="mr-1.5" /> 新建
              </button>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-8">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
           {activeTab === 'settings' ? (
             <SettingsPanel onExport={handleExportJson} onImportJson={handleImportJson} onImportHtml={handleImportHtml} onSync={() => handleCloudSync('both')} count={bookmarks.length} mode={storageMode} isImporting={isImporting} isSyncing={isSyncing}/>
           ) : (
-            <>
+            <div className="animate-in fade-in duration-500">
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                   <h1 className="text-xl font-bold text-white flex items-center">
+                     {selectedCategory === 'all' ? '所有书签' : selectedCategory}
+                     <span className="ml-3 text-xs font-normal text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full">{filtered.length} 个结果</span>
+                   </h1>
+                   {selectedCategory !== 'all' && (
+                     <button onClick={() => setSelectedCategory('all')} className="text-[10px] text-blue-500 hover:underline mt-1">清除过滤器</button>
+                   )}
+                </div>
+              </div>
+
               {filtered.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-64 text-slate-600">
-                  <Search size={48} className="opacity-10 mb-4" />
-                  <p className="text-sm">暂无数据</p>
+                <div className="flex flex-col items-center justify-center h-80 text-slate-600 bg-slate-900/20 rounded-3xl border border-dashed border-slate-800">
+                  <div className="w-16 h-16 bg-slate-800/50 rounded-full flex items-center justify-center mb-4">
+                    <Search size={24} className="opacity-20" />
+                  </div>
+                  <p className="text-sm font-medium">未找到匹配的书签</p>
+                  <button onClick={() => {setSearchTerm(''); setSelectedCategory('all');}} className="mt-4 text-xs text-blue-500 hover:text-blue-400 transition-colors">重置所有过滤条件</button>
                 </div>
               ) : ( 
                 <div className={viewMode === 'grid' ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" : "space-y-2"}>
@@ -324,13 +397,23 @@ export default function App() {
                   ))}
                 </div>
               )}
-            </>
+            </div>
           )}
         </div>
       </main>
 
-      <AddBookmarkModal isOpen={showAddModal} onClose={closeModal} onSave={handleSave} formData={formData} setFormData={setFormData} isEditing={!!editingId} storageMode={storageMode} />
-      {showBrowser && <BrowserPreview url={currentUrl} onClose={() => setShowBrowser(false)} onError={() => showToast("预览受限，请点击外部打开", "error")} />}
+      <AddBookmarkModal 
+        isOpen={showAddModal} 
+        onClose={closeModal} 
+        onSave={handleSave} 
+        formData={formData} 
+        setFormData={setFormData} 
+        isEditing={!!editingId} 
+        storageMode={storageMode}
+        existingCategories={categories}
+      />
+      
+      {showBrowser && <BrowserPreview url={currentUrl} onClose={() => setShowBrowser(false)} onError={() => showToast("预览受限，请尝试外部打开", "error")} />}
       <ConfirmModal isOpen={showConfirmModal.visible} onClose={() => setShowConfirmModal({ visible: false, id: null })} onConfirm={confirmDelete} />
     </div>
   );
